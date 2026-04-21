@@ -187,7 +187,7 @@ Recorded outputs for all four live in `demo/recordings/`.
 ```
 src/
   boot.asm          512 B — reset-and-retry MBR
-  kernel.asm        ~3.6 KB — protocol loop, nine primitives, VGA mirror
+  kernel.asm        ~3.9 KB — protocol loop, ten primitives, VGA mirror
 Makefile            nasm, size-asserted
 demo/
   bridge.py         repl / script / ai modes over QEMU -serial stdio

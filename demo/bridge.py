@@ -216,7 +216,7 @@ def mode_ai(session: LlmosSession, task: str, step_limit: int = 20) -> None:
 
     for step in range(step_limit):
         resp = client.messages.create(
-            model="claude-opus-4-5",
+            model="claude-opus-4-7",
             max_tokens=256,
             system=system,
             messages=messages,
