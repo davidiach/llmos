@@ -30,7 +30,7 @@
 > describe io.in
 < ok name=io.in args="port=H" returns="port=H value=H" allowlist=0x20,0x21,0x40,0x43,0x60,0x61,0x64,0x70,0x71
 > describe pci.scan
-< ok name=pci.scan args=none returns="devices=B.D.F:VVVV:DDDD:CC[,...]" scope="bus 0 only; class = base class byte"
+< ok name=pci.scan args=none returns="devices=B.D.F:VVVV:DDDD:CC[,...]" scope="bus 0 + any PCI-to-PCI bridges reachable from it; class = base class byte"
 # Introspection says `pci.scan` exists; now use it once so the demo and CI
 # both cover the newly-advertised primitive.
 > pci.scan

@@ -450,10 +450,13 @@ h_io_in:
     ret
 
 ; ---- pci.scan -------------------------------------------------------------
-;   Enumerate PCI bus 0 using the legacy config mechanism (ports 0xCF8/0xCFC).
-;   v0.1 does not follow PCI-to-PCI bridges; everything reported lives on
-;   bus 0. Multi-function devices are detected via the header-type high bit
-;   at config offset 0x0E.
+;   Enumerate PCI via the legacy config mechanism (ports 0xCF8/0xCFC). Bus 0
+;   is always scanned; PCI-to-PCI bridges (header type 0x01) are followed
+;   into their secondary bus and recursively beyond that. The queue of buses
+;   to visit lives in a 32-byte bitmap (pci_bus_todo): scanning a bus clears
+;   its bit; finding a bridge sets the bit for its secondary bus number.
+;   Multi-function devices are detected via the header-type high bit at
+;   config offset 0x0E.
 ;
 ;   Response: ok devices=B.D.F:VVVV:DDDD:CC[,B.D.F:VVVV:DDDD:CC ...]
 ;     B = bus (2 hex)    D = device (2 hex, 00-1f)    F = function (1 hex, 0-7)
@@ -466,8 +469,58 @@ h_pci_scan:
     mov     si, resp_devices_kw
     call    serial_puts_only
 
+    ; Clear the bus-todo bitmap, then enqueue bus 0.
+    push    es
+    push    di
+    push    ax
+    push    cx
+    xor     ax, ax
+    mov     di, pci_bus_todo
+    push    ds
+    pop     es
+    mov     cx, 16                  ; 32 bytes / 2
+    rep stosw
+    pop     cx
+    pop     ax
+    pop     di
+    pop     es
+    mov     byte [pci_bus_todo], 0x01   ; bit 0 = bus 0
+
     mov     byte [pci_first], 1
-    mov     byte [pci_bus], 0
+    xor     bx, bx                  ; BL = current bus number to consider
+.bus_loop:
+    ; Check bitmap bit for bus BL. AH = mask, SI = &pci_bus_todo[byte].
+    mov     cl, bl
+    and     cl, 0x07                ; CL = bit index within byte
+    mov     ah, 1
+    shl     ah, cl                  ; AH = bit mask
+    mov     al, bl
+    shr     al, 3                   ; AL = byte index
+    mov     si, pci_bus_todo
+    mov     dl, al
+    xor     dh, dh
+    add     si, dx
+    test    [si], ah
+    jz      .bus_skip
+    not     ah
+    and     [si], ah                ; clear bit (we're scanning now)
+    mov     [pci_bus], bl
+    push    bx
+    call    pci_scan_one_bus
+    pop     bx
+.bus_skip:
+    inc     bl
+    jnz     .bus_loop               ; wraps after 255 -> 0, terminates loop
+
+    call    respond_end
+    ret
+
+; ---- pci_scan_one_bus ------------------------------------------------------
+;   Enumerate every populated function on [pci_bus]. Emits one record per
+;   function (comma-separated continuation of the in-progress response line)
+;   and sets pci_bus_todo bits for the secondary bus of any PCI-to-PCI
+;   bridge it finds.
+pci_scan_one_bus:
     mov     byte [pci_dev], 0
 .dev_loop:
     mov     byte [pci_fn], 0
@@ -483,7 +536,7 @@ h_pci_scan:
     shr     eax, 24                 ; AL = base class byte
     mov     [pci_class], al
 
-    ; Comma separator (not before the first record)
+    ; Comma separator (not before the first record of the whole response)
     cmp     byte [pci_first], 1
     jne     .emit_comma
     mov     byte [pci_first], 0
@@ -517,14 +570,35 @@ h_pci_scan:
     mov     al, [pci_class]
     call    serial_put_hex_byte
 
-    ; If we just emitted function 0, check the header-type multi-function bit
-    ; and suppress functions 1..7 on single-function devices.
+    ; Read header type (byte at config offset 0x0E) for two reasons: (a) the
+    ; high bit tells us whether to scan functions 1..7, (b) bits 0..6 == 0x01
+    ; means this is a PCI-to-PCI bridge whose secondary bus we must enqueue.
+    mov     al, 0x0C
+    call    pci_config_read_dword
+    shr     eax, 16
+    mov     [pci_hdr], al           ; full header-type byte (MF bit + type)
+    and     al, 0x7F
+    cmp     al, 0x01
+    jne     .check_mf
+
+    ; PCI-to-PCI bridge. Read dword at register 0x18; secondary bus is byte 1.
+    mov     al, 0x18
+    call    pci_config_read_dword
+    shr     eax, 8                  ; AL = secondary bus number
+    mov     cl, al
+    shr     al, 3                   ; byte index into bitmap
+    and     cl, 0x07                ; bit index
+    mov     ah, 1
+    shl     ah, cl
+    xor     bh, bh
+    mov     bl, al
+    or      [pci_bus_todo + bx], ah
+
+.check_mf:
+    ; Was this fn=0? If so, multi-function bit (0x80) gates scanning 1..7.
     cmp     byte [pci_fn], 0
     jne     .fn_next
-    mov     al, 0x0C                ; register 3 dword; header type at byte 0x0E
-    call    pci_config_read_dword
-    shr     eax, 16                 ; AL = byte at offset 0x0E (header type)
-    test    al, 0x80
+    test    byte [pci_hdr], 0x80
     jz      .dev_next
     jmp     .fn_next
 
@@ -540,8 +614,6 @@ h_pci_scan:
     inc     byte [pci_dev]
     cmp     byte [pci_dev], 32
     jb      .dev_loop
-
-    call    respond_end
     ret
 
 ; pci_config_read_dword: read a 32-bit config register.
@@ -1192,7 +1264,7 @@ sch_mem_read:   db 'ok name=mem.read args="addr=H(1-4) len=N(1-256)" returns="ad
 sch_rtc_now:    db 'ok name=rtc.now args=none returns="iso=YYYY-MM-DDTHH:MM:SS"', 0
 sch_ticks:      db 'ok name=ticks.since_boot args=none returns="ms=N"', 0
 sch_io_in:      db 'ok name=io.in args="port=H" returns="port=H value=H" allowlist=0x20,0x21,0x40,0x43,0x60,0x61,0x64,0x70,0x71', 0
-sch_pci_scan:   db 'ok name=pci.scan args=none returns="devices=B.D.F:VVVV:DDDD:CC[,...]" scope="bus 0 only; class = base class byte"', 0
+sch_pci_scan:   db 'ok name=pci.scan args=none returns="devices=B.D.F:VVVV:DDDD:CC[,...]" scope="bus 0 + any PCI-to-PCI bridges reachable from it; class = base class byte"', 0
 
 ; io.in allowlist (terminator 0xFFFF)
 io_allowlist:
@@ -1290,5 +1362,7 @@ pci_dev:        db 0
 pci_fn:         db 0
 pci_first:      db 0
 pci_class:      db 0
+pci_hdr:        db 0
 pci_ids:        dd 0
+pci_bus_todo:   times 32 db 0      ; 256-bit bitmap of buses still to scan
 

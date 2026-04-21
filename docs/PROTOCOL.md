@@ -107,10 +107,14 @@ by asking.
 
 ## PCI enumeration
 
-`pci.scan` walks PCI bus 0 using the legacy config mechanism — writes the
-enable bit plus bus/device/function/register to `0xCF8`, reads the dword
-from `0xCFC`. Bus 0 only in v0.1: bridges are not followed. Each populated
-function contributes one record to the response list:
+`pci.scan` walks the PCI topology using the legacy config mechanism —
+writes the enable bit plus bus/device/function/register to `0xCF8`, reads
+the dword from `0xCFC`. Scanning always starts at bus 0. When a function's
+header type (bits 0..6 of config offset 0x0E) is `0x01`, it is a
+PCI-to-PCI bridge; the kernel reads the secondary bus number at config
+offset 0x19 and enqueues that bus for scanning. The response therefore
+covers the full reachable tree, in bus-ascending order. Each populated
+function contributes one record:
 
 ```
 ok devices=B.D.F:VVVV:DDDD:CC[,B.D.F:VVVV:DDDD:CC ...]
@@ -118,7 +122,8 @@ ok devices=B.D.F:VVVV:DDDD:CC[,B.D.F:VVVV:DDDD:CC ...]
 
 Fields, all lowercase hex, fixed-width:
 
-- `B` — bus number (2 digits, always `00` in v0.1)
+- `B` — bus number (2 digits, `00` for the root bus, higher for buses
+  discovered behind bridges)
 - `D` — device number (2 digits, `00`–`1f`)
 - `F` — function number (1 digit, `0`–`7`)
 - `VVVV` — vendor id at config offset 0x00
@@ -127,4 +132,4 @@ Fields, all lowercase hex, fixed-width:
 
 Multi-function devices are detected via bit 7 of the header-type byte
 (config offset 0x0E); single-function devices report only function 0.
-An empty bus yields `ok devices=` with no records.
+An empty scan yields `ok devices=` with no records.
