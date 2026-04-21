@@ -24,9 +24,9 @@ The model bootstraps its understanding of the machine from the inside —
 it composes.
 
 ```
-# llmos v0.1 proto=1 primitives=9
+# llmos v0.1 proto=1 primitives=10
 > help
-< ok primitives=help,describe,cpu.vendor,cpu.features,mem.query,mem.read,rtc.now,ticks.since_boot,io.in
+< ok primitives=help,describe,cpu.vendor,cpu.features,mem.query,mem.read,rtc.now,ticks.since_boot,io.in,pci.scan
 > cpu.vendor
 < ok vendor=GenuineIntel family=6 model=6 stepping=3
 > mem.read addr=7c00 len=16
@@ -78,11 +78,19 @@ See `docs/PROTOCOL.md` for the full wire spec.
 | `rtc.now`          | none                        | `iso=YYYY-MM-DDTHH:MM:SS`                       |
 | `ticks.since_boot` | none                        | `ms=N`                                          |
 | `io.in`            | `port=H`                    | `port=H value=H` or `err code=denied`           |
+| `pci.scan`         | none                        | `devices=B.D.F:VVVV:DDDD:CC[,...]` (bus 0)      |
 
 `io.in`'s allowlist is introspectable: `describe io.in` includes the full
 list. At the moment it covers the PIC (0x20, 0x21), PIT (0x40, 0x43),
 keyboard controller (0x60, 0x61, 0x64), CMOS (0x70, 0x71), and COM1
 itself (0x3F8–0x3FF).
+
+`pci.scan` walks bus 0 via the legacy 0xCF8/0xCFC config mechanism and
+emits one record per populated function: bus.device.function, vendor id,
+device id, and the PCI base class byte. It does not follow PCI-to-PCI
+bridges in v0.1 — bus 0 is where QEMU's default chipset lives and is
+enough to see the host bridge, the PIIX south bridge, and whatever
+display/net controllers QEMU attached.
 
 ## Running it
 
@@ -197,7 +205,8 @@ docs/
   segment-switching primitive yet.
 - `io.out` is deliberately absent in v0.1 — the allowlist for writes wants
   more design thought than reads.
-- No PCI enumeration yet. `pci.scan` is the obvious next primitive.
+- `pci.scan` only walks bus 0. Following bridges and exposing BARs would
+  be the next step if the model needs to reach devices behind a bridge.
 - No crypto, no storage, no networking, no interrupts of our own. Every
   non-trivial hardware interaction rides on the BIOS.
 - The kernel is tiny on purpose. "Add a feature" almost always means "add
