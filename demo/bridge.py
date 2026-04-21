@@ -28,18 +28,27 @@ from pathlib import Path
 class LlmosSession:
     """A running llmos instance. Send commands, get back response lines."""
 
-    def __init__(self, image: Path, qemu: str = "qemu-system-i386", boot_timeout: float = 5.0):
+    def __init__(
+        self,
+        image: Path,
+        qemu: str = "qemu-system-i386",
+        qemu_args: list[str] | None = None,
+        boot_timeout: float = 5.0,
+    ):
         self.image = Path(image)
         if not self.image.exists():
             raise FileNotFoundError(f"image not found: {self.image}")
+        launch = [
+            qemu,
+            "-drive", f"format=raw,file={self.image}",
+            "-serial", "stdio",
+            "-display", "none",
+            "-no-reboot",
+        ]
+        if qemu_args:
+            launch.extend(qemu_args)
         self.proc = subprocess.Popen(
-            [
-                qemu,
-                "-drive", f"format=raw,file={self.image}",
-                "-serial", "stdio",
-                "-display", "none",
-                "-no-reboot",
-            ],
+            launch,
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,
@@ -263,6 +272,12 @@ def main() -> int:
         default="qemu-system-i386",
         help="qemu binary to invoke",
     )
+    p.add_argument(
+        "--qemu-arg",
+        action="append",
+        default=[],
+        help="extra argument to pass through to QEMU (repeatable)",
+    )
     sub = p.add_subparsers(dest="mode", required=True)
     sub.add_parser("repl", help="interactive REPL")
     sp_script = sub.add_parser("script", help="replay a transcript file")
@@ -272,7 +287,7 @@ def main() -> int:
     sp_ai.add_argument("-n", "--limit", type=int, default=20, help="step limit")
     args = p.parse_args()
 
-    session = LlmosSession(image=args.image, qemu=args.qemu)
+    session = LlmosSession(image=args.image, qemu=args.qemu, qemu_args=args.qemu_arg)
     try:
         if args.mode == "repl":
             mode_repl(session)
