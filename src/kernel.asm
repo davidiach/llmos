@@ -23,6 +23,7 @@
 ;     rtc.now                  RTC date+time as ISO-ish
 ;     ticks.since_boot         BIOS ticks since boot, in ms
 ;     io.in port=H             8-bit port read (allowlisted)
+;     pci.scan                 enumerate PCI bus 0 via config ports
 ; =============================================================================
 
 [BITS 16]
@@ -125,6 +126,7 @@ cmd_table:
     dw  cmd_rtc_now,    h_rtc_now
     dw  cmd_ticks,      h_ticks
     dw  cmd_io_in,      h_io_in
+    dw  cmd_pci_scan,   h_pci_scan
     dw  0
 
 ; =============================================================================
@@ -445,6 +447,132 @@ h_io_in:
 .usage:
     mov     si, err_io_usage
     call    respond
+    ret
+
+; ---- pci.scan -------------------------------------------------------------
+;   Enumerate PCI bus 0 using the legacy config mechanism (ports 0xCF8/0xCFC).
+;   v0.1 does not follow PCI-to-PCI bridges; everything reported lives on
+;   bus 0. Multi-function devices are detected via the header-type high bit
+;   at config offset 0x0E.
+;
+;   Response: ok devices=B.D.F:VVVV:DDDD:CC[,B.D.F:VVVV:DDDD:CC ...]
+;     B = bus (2 hex)    D = device (2 hex, 00-1f)    F = function (1 hex, 0-7)
+;     V = vendor id (4 hex)    D = device id (4 hex)
+;     C = base class byte (2 hex, config offset 0x0B)
+;   An empty bus yields `ok devices=`.
+h_pci_scan:
+    mov     si, resp_ok_prefix
+    call    serial_puts_only
+    mov     si, resp_devices_kw
+    call    serial_puts_only
+
+    mov     byte [pci_first], 1
+    mov     byte [pci_bus], 0
+    mov     byte [pci_dev], 0
+.dev_loop:
+    mov     byte [pci_fn], 0
+.fn_loop:
+    xor     al, al                  ; register offset 0 -> vendor:device
+    call    pci_config_read_dword
+    cmp     ax, 0xFFFF              ; AX holds the low word = vendor id
+    je      .fn_absent
+    mov     [pci_ids], eax
+
+    mov     al, 0x08                ; register offset 8 -> class/subclass/prog/rev
+    call    pci_config_read_dword
+    shr     eax, 24                 ; AL = base class byte
+    mov     [pci_class], al
+
+    ; Comma separator (not before the first record)
+    cmp     byte [pci_first], 1
+    jne     .emit_comma
+    mov     byte [pci_first], 0
+    jmp     .emit_record
+.emit_comma:
+    mov     al, ','
+    call    serial_putc
+.emit_record:
+    mov     al, [pci_bus]
+    call    serial_put_hex_byte
+    mov     al, '.'
+    call    serial_putc
+    mov     al, [pci_dev]
+    call    serial_put_hex_byte
+    mov     al, '.'
+    call    serial_putc
+    mov     al, [pci_fn]
+    and     al, 0x07
+    add     al, '0'
+    call    serial_putc
+    mov     al, ':'
+    call    serial_putc
+    mov     ax, [pci_ids]           ; vendor id (low word of register 0)
+    call    serial_put_hex_word
+    mov     al, ':'
+    call    serial_putc
+    mov     ax, [pci_ids + 2]       ; device id (high word of register 0)
+    call    serial_put_hex_word
+    mov     al, ':'
+    call    serial_putc
+    mov     al, [pci_class]
+    call    serial_put_hex_byte
+
+    ; If we just emitted function 0, check the header-type multi-function bit
+    ; and suppress functions 1..7 on single-function devices.
+    cmp     byte [pci_fn], 0
+    jne     .fn_next
+    mov     al, 0x0C                ; register 3 dword; header type at byte 0x0E
+    call    pci_config_read_dword
+    shr     eax, 16                 ; AL = byte at offset 0x0E (header type)
+    test    al, 0x80
+    jz      .dev_next
+    jmp     .fn_next
+
+.fn_absent:
+    ; Absent function. On fn=0 the whole device slot is empty.
+    cmp     byte [pci_fn], 0
+    je      .dev_next
+.fn_next:
+    inc     byte [pci_fn]
+    cmp     byte [pci_fn], 8
+    jb      .fn_loop
+.dev_next:
+    inc     byte [pci_dev]
+    cmp     byte [pci_dev], 32
+    jb      .dev_loop
+
+    call    respond_end
+    ret
+
+; pci_config_read_dword: read a 32-bit config register.
+;   Input:  AL = register offset (byte, will be dword-aligned)
+;           [pci_bus], [pci_dev], [pci_fn]
+;   Output: EAX = dword value read from 0xCFC
+;   Clobbers: DX. Caller-preserved: all others.
+pci_config_read_dword:
+    push    ebx
+    push    ecx
+    movzx   ebx, al
+    and     ebx, 0xFC               ; align to dword
+    movzx   ecx, byte [pci_fn]
+    and     ecx, 0x07
+    shl     ecx, 8
+    or      ebx, ecx
+    movzx   ecx, byte [pci_dev]
+    and     ecx, 0x1F
+    shl     ecx, 11
+    or      ebx, ecx
+    movzx   ecx, byte [pci_bus]
+    shl     ecx, 16
+    or      ebx, ecx
+    or      ebx, 0x80000000         ; enable bit
+    mov     dx, 0x0CF8
+    mov     eax, ebx
+    out     dx, eax
+    mov     dx, 0x0CFC
+    in      eax, dx
+    pop     ecx
+    pop     ebx
     ret
 
 ; =============================================================================
@@ -981,7 +1109,7 @@ vga_banner:
     db '|  COM1 115200 8N1 - LLM driven   |', 13, 10
     db '+---------------------------------+', 13, 10, 13, 10, 0
 
-ready_msg:      db '# llmos v0.1 proto=1 primitives=9', 13, 10, 0
+ready_msg:      db '# llmos v0.1 proto=1 primitives=10', 13, 10, 0
 
 ; Command names (NUL-terminated)
 cmd_help:       db 'help', 0
@@ -993,6 +1121,7 @@ cmd_mem_read:   db 'mem.read', 0
 cmd_rtc_now:    db 'rtc.now', 0
 cmd_ticks:      db 'ticks.since_boot', 0
 cmd_io_in:      db 'io.in', 0
+cmd_pci_scan:   db 'pci.scan', 0
 
 ; Argument key strings
 key_addr:       db 'addr', 0
@@ -1016,6 +1145,7 @@ resp_iso_kw:        db ' iso=', 0
 resp_ms_kw:         db ' ms=', 0
 resp_port_kw:       db ' port=', 0
 resp_value_kw:      db ' value=', 0
+resp_devices_kw:    db ' devices=', 0
 
 ; Error responses (full lines, including newline)
 err_unknown_cmd:
@@ -1037,7 +1167,7 @@ err_io_usage:
 
 ; Help response (full line).
 help_response:
-    db 'ok primitives=help,describe,cpu.vendor,cpu.features,mem.query,mem.read,rtc.now,ticks.since_boot,io.in', 0
+    db 'ok primitives=help,describe,cpu.vendor,cpu.features,mem.query,mem.read,rtc.now,ticks.since_boot,io.in,pci.scan', 0
 
 ; Schema table: (name_ptr, schema_line_ptr). NULL-terminated.
 schema_table:
@@ -1050,6 +1180,7 @@ schema_table:
     dw  cmd_rtc_now,    sch_rtc_now
     dw  cmd_ticks,      sch_ticks
     dw  cmd_io_in,      sch_io_in
+    dw  cmd_pci_scan,   sch_pci_scan
     dw  0
 
 sch_help:       db 'ok name=help args=none returns=primitives=CSV', 0
@@ -1061,6 +1192,7 @@ sch_mem_read:   db 'ok name=mem.read args="addr=H(1-4) len=N(1-256)" returns="ad
 sch_rtc_now:    db 'ok name=rtc.now args=none returns="iso=YYYY-MM-DDTHH:MM:SS"', 0
 sch_ticks:      db 'ok name=ticks.since_boot args=none returns="ms=N"', 0
 sch_io_in:      db 'ok name=io.in args="port=H" returns="port=H value=H" allowlist=0x20,0x21,0x40,0x43,0x60,0x61,0x64,0x70,0x71', 0
+sch_pci_scan:   db 'ok name=pci.scan args=none returns="devices=B.D.F:VVVV:DDDD:CC[,...]" scope="bus 0 only; class = base class byte"', 0
 
 ; io.in allowlist (terminator 0xFFFF)
 io_allowlist:
@@ -1153,4 +1285,10 @@ boot_ticks:     dd 0
 mem_addr:       dw 0
 mem_len:        dw 0
 feat_first:     db 0
+pci_bus:        db 0
+pci_dev:        db 0
+pci_fn:         db 0
+pci_first:      db 0
+pci_class:      db 0
+pci_ids:        dd 0
 

@@ -77,7 +77,7 @@ Error codes in v1:
 On reset, the kernel sets up serial and emits:
 
 ```
-# llmos v0.1 proto=1 primitives=9
+# llmos v0.1 proto=1 primitives=10
 ```
 
 A bridge MUST wait for a line whose first character is `#` before sending
@@ -104,3 +104,27 @@ full list in its response. Attempting to read a non-allowed port yields
 `err code=denied detail="port not in allowlist"`. This is deliberate: a
 model discovers the boundary by bumping into it, and can see the boundary
 by asking.
+
+## PCI enumeration
+
+`pci.scan` walks PCI bus 0 using the legacy config mechanism — writes the
+enable bit plus bus/device/function/register to `0xCF8`, reads the dword
+from `0xCFC`. Bus 0 only in v0.1: bridges are not followed. Each populated
+function contributes one record to the response list:
+
+```
+ok devices=B.D.F:VVVV:DDDD:CC[,B.D.F:VVVV:DDDD:CC ...]
+```
+
+Fields, all lowercase hex, fixed-width:
+
+- `B` — bus number (2 digits, always `00` in v0.1)
+- `D` — device number (2 digits, `00`–`1f`)
+- `F` — function number (1 digit, `0`–`7`)
+- `VVVV` — vendor id at config offset 0x00
+- `DDDD` — device id at config offset 0x02
+- `CC` — base class byte at config offset 0x0B
+
+Multi-function devices are detected via bit 7 of the header-type byte
+(config offset 0x0E); single-function devices report only function 0.
+An empty bus yields `ok devices=` with no records.

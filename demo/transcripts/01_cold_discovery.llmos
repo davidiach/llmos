@@ -10,7 +10,7 @@
 help
 
 # "primitives=help,describe,cpu.vendor,cpu.features,mem.query,mem.read,rtc.now,
-#  ticks.since_boot,io.in" — nine primitives. Now learn each one.
+#  ticks.since_boot,io.in,pci.scan" — ten primitives. Now learn each one.
 
 describe help
 describe describe
@@ -21,8 +21,14 @@ describe mem.read
 describe rtc.now
 describe ticks.since_boot
 describe io.in
+describe pci.scan
 
-# At this point the model knows: the OS has nine primitives, which ones take
+# Introspection says `pci.scan` exists; now use it once so the demo and CI
+# both cover the newly-advertised primitive.
+pci.scan
+
+# At this point the model knows: the OS has ten primitives, which ones take
 # arguments and in what format, and what fields each response contains.
 # io.in's schema even leaks its allowlist — the set of ports this machine
-# will let the model touch. Everything learned without a manual.
+# will let the model touch — and `pci.scan` confirms the machine can describe
+# its bus topology from the inside too. Everything learned without a manual.
