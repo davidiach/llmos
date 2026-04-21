@@ -54,6 +54,7 @@ class LlmosSession:
             daemon=True,
         )
         self._stdout_thread.start()
+        self._sync_lost = False
         self.banner = self._await_banner(boot_timeout)
         self.log: list[tuple[str, str]] = []   # (request, response) history
 
@@ -102,12 +103,18 @@ class LlmosSession:
 
     def send(self, cmd: str, timeout: float = 2.0) -> str:
         """Send one command, return its single-line response."""
+        if self._sync_lost:
+            raise RuntimeError("session is desynchronized; restart llmos")
         cmd = cmd.strip()
         payload = (cmd + "\r\n").encode("ascii")
         assert self.proc.stdin is not None
         self.proc.stdin.write(payload)
         self.proc.stdin.flush()
-        resp = self._readline(timeout=timeout)
+        try:
+            resp = self._readline(timeout=timeout)
+        except (EOFError, TimeoutError):
+            self._sync_lost = True
+            raise
         self.log.append((cmd, resp))
         return resp
 
@@ -142,7 +149,10 @@ def mode_repl(session: LlmosSession) -> None:
             resp = session.send(cmd)
         except TimeoutError as e:
             print(f"[bridge] timeout: {e}", file=sys.stderr)
-            continue
+            break
+        except (EOFError, RuntimeError) as e:
+            print(f"[bridge] disconnected: {e}", file=sys.stderr)
+            break
         print(f"< {resp}")
 
 
@@ -160,7 +170,10 @@ def mode_script(session: LlmosSession, path: Path) -> None:
             resp = session.send(line)
         except TimeoutError as e:
             print(f"# timeout: {e}")
-            continue
+            break
+        except (EOFError, RuntimeError) as e:
+            print(f"# disconnected: {e}")
+            break
         print(f"< {resp}")
 
 
@@ -221,6 +234,12 @@ def mode_ai(session: LlmosSession, task: str, step_limit: int = 20) -> None:
             kernel_resp = session.send(cmd)
         except TimeoutError as e:
             kernel_resp = f"err code=timeout detail=\"{e}\""
+            print(f"< {kernel_resp}")
+            print("# session desynchronized after timeout")
+            return
+        except (EOFError, RuntimeError) as e:
+            print(f"# disconnected: {e}")
+            return
         print(f"< {kernel_resp}")
         messages.append({"role": "assistant", "content": cmd})
         messages.append({"role": "user", "content": kernel_resp})
