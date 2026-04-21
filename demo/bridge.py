@@ -17,8 +17,10 @@ returning control.
 
 import argparse
 import os
+import queue
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -43,26 +45,52 @@ class LlmosSession:
             stderr=subprocess.DEVNULL,
             bufsize=0,
         )
+        if self.proc.stdin is None or self.proc.stdout is None:
+            raise RuntimeError("failed to open llmos stdio pipes")
+        self._stdout_queue: queue.Queue[bytes | None] = queue.Queue()
+        self._stdout_thread = threading.Thread(
+            target=self._pump_stdout,
+            name="llmos-stdout",
+            daemon=True,
+        )
+        self._stdout_thread.start()
+        self._sync_lost = False
         self.banner = self._await_banner(boot_timeout)
         self.log: list[tuple[str, str]] = []   # (request, response) history
 
     # ----- low-level I/O ----------------------------------------------------
 
+    def _pump_stdout(self) -> None:
+        """Read bytes from QEMU on a worker thread so timeouts stay enforceable."""
+        assert self.proc.stdout is not None
+        while True:
+            ch = self.proc.stdout.read(1)
+            if not ch:
+                self._stdout_queue.put(None)
+                return
+            self._stdout_queue.put(ch)
+
     def _readline(self, timeout: float = 2.0) -> str:
         """Read one \\r\\n-terminated line from the kernel, with a deadline."""
         deadline = time.monotonic() + timeout
         buf = bytearray()
-        while time.monotonic() < deadline:
-            ch = self.proc.stdout.read(1)
-            if not ch:
-                time.sleep(0.01)
-                continue
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError(f"no response within {timeout}s (partial: {buf!r})")
+            try:
+                ch = self._stdout_queue.get(timeout=remaining)
+            except queue.Empty as exc:
+                raise TimeoutError(f"no response within {timeout}s (partial: {buf!r})") from exc
+            if ch is None:
+                raise EOFError(
+                    f"llmos exited before completing a line (partial: {buf!r})"
+                )
             if ch == b"\r":
                 continue
             if ch == b"\n":
                 return buf.decode("ascii", errors="replace")
             buf += ch
-        raise TimeoutError(f"no response within {timeout}s (partial: {buf!r})")
 
     def _await_banner(self, timeout: float) -> str:
         """Read lines until we see a `#`-prefixed system banner."""
@@ -75,11 +103,18 @@ class LlmosSession:
 
     def send(self, cmd: str, timeout: float = 2.0) -> str:
         """Send one command, return its single-line response."""
+        if self._sync_lost:
+            raise RuntimeError("session is desynchronized; restart llmos")
         cmd = cmd.strip()
         payload = (cmd + "\r\n").encode("ascii")
+        assert self.proc.stdin is not None
         self.proc.stdin.write(payload)
         self.proc.stdin.flush()
-        resp = self._readline(timeout=timeout)
+        try:
+            resp = self._readline(timeout=timeout)
+        except (EOFError, TimeoutError):
+            self._sync_lost = True
+            raise
         self.log.append((cmd, resp))
         return resp
 
@@ -114,7 +149,10 @@ def mode_repl(session: LlmosSession) -> None:
             resp = session.send(cmd)
         except TimeoutError as e:
             print(f"[bridge] timeout: {e}", file=sys.stderr)
-            continue
+            break
+        except (EOFError, RuntimeError) as e:
+            print(f"[bridge] disconnected: {e}", file=sys.stderr)
+            break
         print(f"< {resp}")
 
 
@@ -132,7 +170,10 @@ def mode_script(session: LlmosSession, path: Path) -> None:
             resp = session.send(line)
         except TimeoutError as e:
             print(f"# timeout: {e}")
-            continue
+            break
+        except (EOFError, RuntimeError) as e:
+            print(f"# disconnected: {e}")
+            break
         print(f"< {resp}")
 
 
@@ -193,6 +234,12 @@ def mode_ai(session: LlmosSession, task: str, step_limit: int = 20) -> None:
             kernel_resp = session.send(cmd)
         except TimeoutError as e:
             kernel_resp = f"err code=timeout detail=\"{e}\""
+            print(f"< {kernel_resp}")
+            print("# session desynchronized after timeout")
+            return
+        except (EOFError, RuntimeError) as e:
+            print(f"# disconnected: {e}")
+            return
         print(f"< {kernel_resp}")
         messages.append({"role": "assistant", "content": cmd})
         messages.append({"role": "user", "content": kernel_resp})

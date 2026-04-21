@@ -15,6 +15,8 @@ KERNEL_SEGMENT  equ 0x0000
 KERNEL_OFFSET   equ 0x1000
 KERNEL_SECTORS  equ 32              ; 16 KB of kernel space (does not collide
                                     ; with the bootloader image at 0x7C00)
+SECTORS_PER_TRACK equ 18
+HEADS_PER_CYL    equ 2
 
 start:
     cli
@@ -35,26 +37,54 @@ start:
     mov     dl, [boot_drive]
     int     0x13                    ; reset disk
 
-    mov     cx, 3
-.try:
-    push    cx
     mov     ax, KERNEL_SEGMENT
     mov     es, ax
     mov     bx, KERNEL_OFFSET
+    mov     byte [kernel_cyl], 0
+    mov     byte [kernel_head], 0
+    mov     byte [kernel_sector], 2
+    mov     byte [kernel_left], KERNEL_SECTORS
+
+.load_next:
+    cmp     byte [kernel_left], 0
+    je      .ok
+    mov     cx, 3
+.try:
+    push    bx
+    push    cx
     mov     ah, 0x02
-    mov     al, KERNEL_SECTORS
-    mov     ch, 0
-    mov     cl, 2
-    mov     dh, 0
+    mov     al, 1
+    mov     ch, [kernel_cyl]
+    mov     cl, [kernel_sector]
+    mov     dh, [kernel_head]
     mov     dl, [boot_drive]
     int     0x13
     pop     cx
-    jnc     .ok
+    pop     bx
+    jnc     .advance
+    push    bx
+    push    cx
     xor     ah, ah
     mov     dl, [boot_drive]
     int     0x13
+    pop     cx
+    pop     bx
     loop    .try
     jmp     disk_error
+
+.advance:
+    add     bx, 512
+    dec     byte [kernel_left]
+    inc     byte [kernel_sector]
+    cmp     byte [kernel_sector], SECTORS_PER_TRACK + 1
+    jb      .load_next
+    mov     byte [kernel_sector], 1
+    inc     byte [kernel_head]
+    cmp     byte [kernel_head], HEADS_PER_CYL
+    jb      .load_next
+    mov     byte [kernel_head], 0
+    inc     byte [kernel_cyl]
+    jmp     .load_next
 .ok:
     jmp     KERNEL_SEGMENT:KERNEL_OFFSET
 
@@ -80,6 +110,10 @@ print:
     ret
 
 boot_drive:  db 0
+kernel_cyl:  db 0
+kernel_head: db 0
+kernel_sector: db 0
+kernel_left: db 0
 boot_msg:    db 'llmos: loading kernel...', 13, 10, 0
 err_msg:     db 'llmos: disk read failed', 13, 10, 0
 

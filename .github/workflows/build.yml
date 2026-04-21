@@ -25,6 +25,7 @@ jobs:
 
       - name: Smoke-test the protocol
         run: |
+          set -o pipefail
           timeout 10 python3 demo/bridge.py \
             --image build/llmos.img \
             script demo/transcripts/01_cold_discovery.llmos \
