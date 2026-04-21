@@ -1,0 +1,48 @@
+# # llmos v0.1 proto=1 primitives=10
+# =============================================================================
+# Beat 4: PCI walk — figure out what hardware is on the bus
+#
+# Task handed to the model: "Figure out what hardware is on the bus."
+#
+# The model doesn't know the primitive list yet. It asks `help`, notices
+# `pci.scan`, asks for the schema (to learn how to read the records), then
+# scans the bus. The response is a CSV of fixed-width B.D.F:VVVV:DDDD:CC
+# records — everything the model needs to name the devices from first
+# principles using only the vendor id and the PCI base-class byte.
+# =============================================================================
+# What can this OS do?
+> help
+< ok primitives=help,describe,cpu.vendor,cpu.features,mem.query,mem.read,rtc.now,ticks.since_boot,io.in,pci.scan
+# `pci.scan` is right there in the primitive list. Learn the record shape
+# before calling it — the schema explains what each colon-separated field is.
+> describe pci.scan
+< ok name=pci.scan args=none returns="devices=B.D.F:VVVV:DDDD:CC[,...]" scope="bus 0 only; class = base class byte"
+# Now walk the bus. Bus 0 only in v0.1; bridges aren't followed.
+> pci.scan
+< ok devices=00.00.0:8086:1237:06,00.01.0:8086:7000:06,00.01.1:8086:7010:01,00.01.3:8086:7113:06,00.02.0:1234:1111:03,00.03.0:8086:100e:02
+# The record format is B.D.F:VVVV:DDDD:CC — bus.device.function, vendor id,
+# device id, base class byte. Vendor 8086 is Intel; vendor 1234 is QEMU's
+# synthetic "std-vga" vendor. The class byte is the interesting part — it
+# names the *kind* of device independent of who made it:
+#
+#   class 01 = mass storage
+#   class 02 = network
+#   class 03 = display
+#   class 06 = bridge
+#
+# So the model can now read the list:
+#   00.00.0 8086:1237 class 06 — Intel i440FX host bridge (CPU <-> PCI)
+#   00.01.0 8086:7000 class 06 — Intel PIIX3 ISA bridge (south bridge)
+#   00.01.1 8086:7010 class 01 — PIIX3 IDE controller (the disk we saw in
+#                                beat 3 hanging off 0x1F0, denied at the
+#                                io.in layer but visible here as a device)
+#   00.01.3 8086:7113 class 06 — PIIX4 power-management / ACPI bridge
+#   00.02.0 1234:1111 class 03 — QEMU std-vga display adapter
+#   00.03.0 8086:100e class 02 — Intel e1000 Gigabit Ethernet
+#
+# Conclusion the model can draw:
+#   This is a QEMU-style PC/AT clone built around the i440FX/PIIX chipset,
+#   with an emulated e1000 NIC and a QEMU stdvga display. The IDE controller
+#   from beat 3 shows up here even though its command-block ports weren't on
+#   the io.in allowlist — the bus view and the port view are two different
+#   faces of the same hardware, and llmos lets the model see both.

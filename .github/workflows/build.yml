@@ -26,15 +26,44 @@ jobs:
       - name: Smoke-test the protocol
         run: |
           set -o pipefail
-          timeout 10 python3 demo/bridge.py \
-            --image build/llmos.img \
-            script demo/transcripts/01_cold_discovery.llmos \
-            | tee /tmp/recording.txt
-          # Verify cold discovery still reaches the new primitive end-to-end.
-          grep -q "^# # llmos v0.1" /tmp/recording.txt
-          grep -q "^< ok primitives=" /tmp/recording.txt
-          grep -q "^< ok name=pci.scan " /tmp/recording.txt
-          grep -q "^< ok devices=" /tmp/recording.txt
+          # Replay every shipped transcript against a fresh QEMU boot and
+          # verify each one produces the markers that make it that beat.
+          # The banner check is common to all; the rest is beat-specific.
+          run_transcript() {
+            local name="$1"
+            local out="/tmp/${name}.txt"
+            echo "::group::smoke: ${name}"
+            timeout 30 python3 demo/bridge.py \
+              --image build/llmos.img \
+              script "demo/transcripts/${name}.llmos" \
+              | tee "${out}"
+            grep -q "^# # llmos v0.1 proto=1 primitives=" "${out}"
+            echo "::endgroup::"
+          }
+
+          run_transcript 01_cold_discovery
+          # Beat 1: introspection graph — help lists primitives, describe
+          # reaches pci.scan, and pci.scan itself returns a populated bus walk.
+          grep -q "^< ok primitives=help,describe" /tmp/01_cold_discovery.txt
+          grep -q "^< ok name=pci.scan " /tmp/01_cold_discovery.txt
+          grep -q "^< ok devices=00\.00\.0:" /tmp/01_cold_discovery.txt
+
+          run_transcript 02_hardware_archaeology
+          # Beat 2: CPU + memory composition — prove cpu.vendor and mem.query
+          # both round-tripped against real BIOS/CPUID data.
+          grep -q "^< ok vendor=GenuineIntel " /tmp/02_hardware_archaeology.txt
+          grep -q "^< ok conv_kb=" /tmp/02_hardware_archaeology.txt
+
+          run_transcript 03_denied_path
+          # Beat 3: denial as an interface element — at least one io.in call
+          # MUST hit the allowlist and come back with code=denied.
+          grep -q '^< err code=denied detail="port not in allowlist"' /tmp/03_denied_path.txt
+
+          run_transcript 04_pci_walk
+          # Beat 4: bus walk — schema first, then pci.scan enumerates a
+          # populated bus instead of the protocol's empty-bus `ok devices=`.
+          grep -q "^< ok name=pci.scan " /tmp/04_pci_walk.txt
+          grep -q "^< ok devices=00\.00\.0:" /tmp/04_pci_walk.txt
 
       - name: Upload image
         uses: actions/upload-artifact@v4
