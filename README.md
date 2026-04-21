@@ -127,7 +127,7 @@ Empty line to quit.
 python3 demo/bridge.py script demo/transcripts/01_cold_discovery.llmos
 ```
 
-The repo ships with three transcripts — the three demo beats described
+The repo ships with four transcripts — the four demo beats described
 below.
 
 ### Let Claude drive
@@ -141,7 +141,7 @@ The bridge hands Claude the boot banner and a tight system prompt, then
 lets it issue one command per turn. It runs until Claude emits `DONE` or
 the step limit is hit (default 20).
 
-## The demo, in three beats
+## The demo, in four beats
 
 **Beat 1 — Cold discovery.** Claude is told nothing about llmos except that
 `help` exists. It walks the introspection graph — `help`, then `describe`
@@ -169,7 +169,18 @@ an interface element, not an error.
 
 Transcript: `demo/transcripts/03_denied_path.llmos`.
 
-Recorded outputs for all three live in `demo/recordings/`.
+**Beat 4 — PCI walk.** Task: *figure out what hardware is on the bus*.
+Claude asks `help`, spots `pci.scan`, reads its schema to learn the
+`B.D.F:VVVV:DDDD:CC` record shape, and scans bus 0. One line of output
+names every populated function — host bridge, south bridge, IDE, display,
+network — by vendor id and PCI base class. The IDE controller denied at
+the port layer in beat 3 shows up here as a device: bus view and port
+view are two faces of the same hardware, and llmos lets the model see
+both.
+
+Transcript: `demo/transcripts/04_pci_walk.llmos`.
+
+Recorded outputs for all four live in `demo/recordings/`.
 
 ## Layout
 
@@ -180,7 +191,7 @@ src/
 Makefile            nasm, size-asserted
 demo/
   bridge.py         repl / script / ai modes over QEMU -serial stdio
-  transcripts/*.llmos  the three demo beats, as replayable scripts
+  transcripts/*.llmos  the four demo beats, as replayable scripts
   recordings/*.txt  captured outputs of each transcript
 docs/
   PROTOCOL.md       wire spec
