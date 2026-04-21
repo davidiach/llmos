@@ -17,7 +17,10 @@ help
 # before calling it — the schema explains what each colon-separated field is.
 describe pci.scan
 
-# Now walk the bus. Bus 0 only in v0.1; bridges aren't followed.
+# Now walk the tree. Starts at bus 0; PCI-to-PCI bridges are followed
+# into their secondary bus. QEMU's default -M pc has no such bridges, so
+# on this machine everything lands on bus 00 — but the same response
+# format will carry bus 01+ once a bridge is attached.
 pci.scan
 
 # The record format is B.D.F:VVVV:DDDD:CC — bus.device.function, vendor id,
