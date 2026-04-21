@@ -62,11 +62,13 @@ start:
     pop     cx
     pop     bx
     jnc     .advance
+    push    bx
     push    cx
     xor     ah, ah
     mov     dl, [boot_drive]
     int     0x13
     pop     cx
+    pop     bx
     loop    .try
     jmp     disk_error
 
