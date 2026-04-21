@@ -67,6 +67,8 @@ jobs:
 
           # Bridge-following regression: boot QEMU with an explicit PCI bridge
           # plus an e1000 behind it, then prove pci.scan reaches bus 01.
+          # Use --qemu-arg=VALUE (not --qemu-arg VALUE) so argparse doesn't
+          # misread dash-prefixed QEMU flags like `-device` as bridge.py options.
           cat > /tmp/pci_bridge_probe.llmos <<'EOF'
           describe pci.scan
           pci.scan
@@ -74,10 +76,10 @@ jobs:
           echo "::group::smoke: pci-bridge-follow"
           timeout 30 python3 demo/bridge.py \
             --image build/llmos.img \
-            --qemu-arg -device \
-            --qemu-arg pci-bridge,bus=pci.0,chassis_nr=1,id=br0,addr=4 \
-            --qemu-arg -device \
-            --qemu-arg e1000,bus=br0,addr=2 \
+            --qemu-arg=-device \
+            --qemu-arg=pci-bridge,bus=pci.0,chassis_nr=1,id=br0,addr=4 \
+            --qemu-arg=-device \
+            --qemu-arg=e1000,bus=br0,addr=2 \
             script /tmp/pci_bridge_probe.llmos \
             | tee /tmp/pci_bridge_probe.txt
           grep -q "^# # llmos v0.1 proto=1 primitives=" /tmp/pci_bridge_probe.txt
