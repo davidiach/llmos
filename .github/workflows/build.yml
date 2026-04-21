@@ -30,9 +30,11 @@ jobs:
             --image build/llmos.img \
             script demo/transcripts/01_cold_discovery.llmos \
             | tee /tmp/recording.txt
-          # Verify the banner and at least one `ok` response were emitted.
+          # Verify cold discovery still reaches the new primitive end-to-end.
           grep -q "^# # llmos v0.1" /tmp/recording.txt
           grep -q "^< ok primitives=" /tmp/recording.txt
+          grep -q "^< ok name=pci.scan " /tmp/recording.txt
+          grep -q "^< ok devices=" /tmp/recording.txt
 
       - name: Upload image
         uses: actions/upload-artifact@v4
