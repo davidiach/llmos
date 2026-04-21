@@ -1,5 +1,7 @@
 # llmos
 
+[![build](https://github.com/davidiach/llmos/actions/workflows/build.yml/badge.svg)](https://github.com/davidiach/llmos/actions/workflows/build.yml)
+
 *An operating system whose primary user is a language model.*
 
 Operating systems have always been designed for humans to drive. Shells,
@@ -203,4 +205,4 @@ docs/
 
 ## License
 
-MIT. See `LICENSE`.
+Apache License 2.0. See `LICENSE`.
