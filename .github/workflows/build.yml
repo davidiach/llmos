@@ -43,10 +43,10 @@ jobs:
 
           run_transcript 01_cold_discovery
           # Beat 1: introspection graph — help lists primitives, describe
-          # reaches pci.scan, and pci.scan itself returns a devices= line.
+          # reaches pci.scan, and pci.scan itself returns a populated bus walk.
           grep -q "^< ok primitives=help,describe" /tmp/01_cold_discovery.txt
           grep -q "^< ok name=pci.scan " /tmp/01_cold_discovery.txt
-          grep -q "^< ok devices=" /tmp/01_cold_discovery.txt
+          grep -q "^< ok devices=00\.00\.0:" /tmp/01_cold_discovery.txt
 
           run_transcript 02_hardware_archaeology
           # Beat 2: CPU + memory composition — prove cpu.vendor and mem.query
@@ -60,8 +60,10 @@ jobs:
           grep -q '^< err code=denied detail="port not in allowlist"' /tmp/03_denied_path.txt
 
           run_transcript 04_pci_walk
-          # Beat 4: bus walk — pci.scan enumerates at least one device.
-          grep -q "^< ok devices=" /tmp/04_pci_walk.txt
+          # Beat 4: bus walk — schema first, then pci.scan enumerates a
+          # populated bus instead of the protocol's empty-bus `ok devices=`.
+          grep -q "^< ok name=pci.scan " /tmp/04_pci_walk.txt
+          grep -q "^< ok devices=00\.00\.0:" /tmp/04_pci_walk.txt
 
       - name: Upload image
         uses: actions/upload-artifact@v4
