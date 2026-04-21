@@ -1,0 +1,35 @@
+# # llmos v0.1 proto=1 primitives=9
+# =============================================================================
+# Beat 3: The interesting failure — errors as the interface
+#
+# Task: "Read the hard drive's SMART status."
+#
+# This is not a primitive. The model has no disk.* commands. It tries the
+# closest thing it can think of — direct port I/O to the ATA command block
+# at 0x1F0..0x1F7. The allowlist denies those ports. The model must
+# recognise the denial as signal rather than failure, and either explain
+# what it can't do, or find a legal path that answers a related question.
+# =============================================================================
+# First attempt: ATA data register.
+> io.in port=1f0
+< err code=denied detail="port not in allowlist"
+# Denied. Try the ATA status register.
+> io.in port=1f7
+< err code=denied detail="port not in allowlist"
+# Also denied. By now the model should recognise a pattern: the OS is not
+# giving it unfettered port access. It can read the schema to confirm the
+# allowlist instead of probing blindly:
+> describe io.in
+< ok name=io.in args="port=H" returns="port=H value=H" allowlist=0x20,0x21,0x40,0x43,0x60,0x61,0x64,0x70,0x71
+# The schema lists every port this OS will permit. ATA is absent. The model
+# now knows the answer is "I can't read SMART on this OS" — and knows *why*.
+# The interesting part for the audience: the denial message was enough for
+# the model to course-correct without any out-of-band explanation.
+# A legal path exists for adjacent information: the BIOS data area at 0x0400
+# stores the number of hard disks the BIOS detected at offset 0x0075.
+> mem.read addr=400 len=128
+< ok addr=0400 len=128 data=f803000000000000780300000000c09f2742007f0200000000001e001e0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000035000001000001a130000000000000000000000000000070600d403000000000000009e421000000000000001c000140000000a000000
+# Byte at 0x0475 (offset 117 inside the 128-byte read above) is the hard
+# drive count according to the BIOS. Not SMART, but a related fact the
+# model can return: "I can't read SMART from userland on llmos, but I can
+# tell you the BIOS sees N hard disks."

@@ -1,0 +1,106 @@
+# llmos wire protocol v1
+
+## Transport
+
+COM1 at 115200 baud, 8 data bits, no parity, 1 stop bit. Hardware flow
+control is not used; the protocol is self-delimiting by newlines.
+
+## Record format
+
+Every record is a single line terminated by `\n`. Lines may also include
+`\r`; the kernel strips it. Records come in three types, distinguished by
+the first character when the bridge logs them:
+
+```
+>  request from the user (sent by the bridge to the kernel)
+<  response from the kernel
+#  unsolicited kernel message — banner, event, or comment
+```
+
+The `>` and `<` prefixes are *conventions of the bridge's display* — the
+kernel itself sends only the content and a trailing `\n`. The `#` prefix IS
+emitted by the kernel for system messages.
+
+## Requests
+
+```
+CMD [KEY=VALUE ...]
+```
+
+`CMD` is a single token (no whitespace). `KEY=VALUE` pairs are
+space-separated and may appear in any order. Values are either unquoted
+tokens (no whitespace), hexadecimal (1–4 digits, case-insensitive), or
+decimal integers.
+
+Examples:
+```
+help
+describe cpu.vendor
+mem.read addr=7c00 len=16
+io.in port=70
+```
+
+## Responses
+
+Every response line begins with exactly one of:
+
+- `ok [KEY=VALUE ...]` — success, with zero or more fields
+- `err code=CODE detail="HUMAN READABLE"` — failure
+
+Error codes in v1:
+
+| Code            | Meaning                                            |
+| --------------- | -------------------------------------------------- |
+| `unknown_cmd`   | The command name is not a registered primitive.    |
+| `bad_arg`       | Arguments are missing, malformed, or unparseable.  |
+| `out_of_range`  | An argument is valid in format but out of bounds.  |
+| `denied`        | The operation is blocked by policy (e.g. `io.in`). |
+| `unavailable`   | The underlying resource did not respond.           |
+| `timeout`       | (Bridge-side only) The kernel did not reply.       |
+
+## Value encodings
+
+- **Strings:** unquoted when they match `[A-Za-z0-9._-]+`, otherwise wrapped
+  in double quotes with no escape syntax (the kernel never emits a `"`
+  inside a quoted string).
+- **Integers (decimal):** `ms=2805`, `family=6`.
+- **Hex integers:** lowercase, no `0x` prefix, exactly as many digits as the
+  field calls for (`value=00`, `port=0070`, `addr=7c00`).
+- **Hex blobs:** lowercase, concatenated, no separator (`data=fa31c08e…`).
+  Length is always included as a separate `len=` field so the reader can
+  split without parsing.
+- **Comma-separated lists:** no spaces after commas
+  (`features=fpu,de,pse,tsc`).
+
+## Boot banner
+
+On reset, the kernel sets up serial and emits:
+
+```
+# llmos v0.1 proto=1 primitives=9
+```
+
+A bridge MUST wait for a line whose first character is `#` before sending
+any command. The banner acts as a readiness signal.
+
+## One transaction per request
+
+The kernel emits exactly one response line per request. There is no
+streaming, no framing other than `\n`, no interleaved events. The bridge
+can safely pair each sent request with the next received line.
+
+## Multi-line payloads
+
+Not supported in v1. Binary payloads are hex-encoded inline on the same
+response line (see `mem.read`). This costs 2× bandwidth in exchange for
+single-line parseability. A future version may add a `data:` framing
+sentinel for larger blobs.
+
+## Allowlist for privileged primitives
+
+`io.in` is restricted to a hard-coded allowlist of ports compiled into the
+kernel. The allowlist is introspectable — `describe io.in` includes the
+full list in its response. Attempting to read a non-allowed port yields
+`err code=denied detail="port not in allowlist"`. This is deliberate: a
+model discovers the boundary by bumping into it, and can see the boundary
+by asking.

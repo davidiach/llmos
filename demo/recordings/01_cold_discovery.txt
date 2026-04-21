@@ -1,0 +1,35 @@
+# # llmos v0.1 proto=1 primitives=9
+# =============================================================================
+# Beat 1: Cold discovery
+#
+# The model is told nothing about llmos. It uses `help` to list primitives,
+# then `describe` on each one to learn their schemas. At the end it has a
+# complete, self-discovered model of the machine's capability surface —
+# derived entirely from introspection, with zero training data about llmos.
+# =============================================================================
+> help
+< ok primitives=help,describe,cpu.vendor,cpu.features,mem.query,mem.read,rtc.now,ticks.since_boot,io.in
+# "primitives=help,describe,cpu.vendor,cpu.features,mem.query,mem.read,rtc.now,
+#  ticks.since_boot,io.in" — nine primitives. Now learn each one.
+> describe help
+< ok name=help args=none returns=primitives=CSV
+> describe describe
+< ok name=describe args=NAME returns=schema-line
+> describe cpu.vendor
+< ok name=cpu.vendor args=none returns="vendor=S family=N model=N stepping=N"
+> describe cpu.features
+< ok name=cpu.features args=none returns="features=CSV (from CPUID leaf 1 EDX)"
+> describe mem.query
+< ok name=mem.query args=none returns="conv_kb=N ext_kb=N ext_blocks_64k=N"
+> describe mem.read
+< ok name=mem.read args="addr=H(1-4) len=N(1-256)" returns="addr=H len=N data=HEX"
+> describe rtc.now
+< ok name=rtc.now args=none returns="iso=YYYY-MM-DDTHH:MM:SS"
+> describe ticks.since_boot
+< ok name=ticks.since_boot args=none returns="ms=N"
+> describe io.in
+< ok name=io.in args="port=H" returns="port=H value=H" allowlist=0x20,0x21,0x40,0x43,0x60,0x61,0x64,0x70,0x71
+# At this point the model knows: the OS has nine primitives, which ones take
+# arguments and in what format, and what fields each response contains.
+# io.in's schema even leaks its allowlist — the set of ports this machine
+# will let the model touch. Everything learned without a manual.

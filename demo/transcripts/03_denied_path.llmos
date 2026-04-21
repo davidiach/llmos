@@ -1,0 +1,36 @@
+# =============================================================================
+# Beat 3: The interesting failure — errors as the interface
+#
+# Task: "Read the hard drive's SMART status."
+#
+# This is not a primitive. The model has no disk.* commands. It tries the
+# closest thing it can think of — direct port I/O to the ATA command block
+# at 0x1F0..0x1F7. The allowlist denies those ports. The model must
+# recognise the denial as signal rather than failure, and either explain
+# what it can't do, or find a legal path that answers a related question.
+# =============================================================================
+
+# First attempt: ATA data register.
+io.in port=1f0
+
+# Denied. Try the ATA status register.
+io.in port=1f7
+
+# Also denied. By now the model should recognise a pattern: the OS is not
+# giving it unfettered port access. It can read the schema to confirm the
+# allowlist instead of probing blindly:
+describe io.in
+
+# The schema lists every port this OS will permit. ATA is absent. The model
+# now knows the answer is "I can't read SMART on this OS" — and knows *why*.
+# The interesting part for the audience: the denial message was enough for
+# the model to course-correct without any out-of-band explanation.
+
+# A legal path exists for adjacent information: the BIOS data area at 0x0400
+# stores the number of hard disks the BIOS detected at offset 0x0075.
+mem.read addr=400 len=128
+
+# Byte at 0x0475 (offset 117 inside the 128-byte read above) is the hard
+# drive count according to the BIOS. Not SMART, but a related fact the
+# model can return: "I can't read SMART from userland on llmos, but I can
+# tell you the BIOS sees N hard disks."

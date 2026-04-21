@@ -1,0 +1,54 @@
+# # llmos v0.1 proto=1 primitives=9
+# =============================================================================
+# Beat 2: Hardware archaeology
+#
+# Task handed to the model: "Figure out what kind of machine this is.
+# Report CPU, RAM, a rough era, and something about the BIOS."
+#
+# The model composes primitives it just learned about — cpu.vendor +
+# cpu.features for silicon, mem.query for RAM, io.in on the CMOS port for
+# firmware era, mem.read on the BIOS data area for more ground truth.
+# =============================================================================
+# First: what is the CPU?
+> cpu.vendor
+< ok vendor=GenuineIntel family=6 model=6 stepping=3
+> cpu.features
+< ok features=fpu,de,pse,tsc,msr,pae,mce,cx8,apic,sep,pge,cmov,pat,mmx,fxsr,sse,sse2
+# Next: how much memory?
+> mem.query
+< ok conv_kb=639 ext_kb=15360 ext_blocks_64k=1790
+# Wall-clock time — and from ticks.since_boot we can note the machine was
+# started only moments ago.
+> rtc.now
+< ok iso=2026-04-21T16:15:29
+> ticks.since_boot
+< ok ms=55
+# The CMOS RTC ports are 0x70 (index) and 0x71 (data). Reading register 0x0D
+# gives the RTC status register D — bit 7 is "valid RAM and time".
+# First select register 0x0D by writing... wait, we only have io.in, not
+# io.out. So we can't select a register. But we can read whatever register
+# was most recently selected:
+> io.in port=71
+< ok port=0071 value=00
+# The BIOS data area at 0x0400 holds the COM1 and LPT1 base port addresses
+# as little-endian words. Read the first 16 bytes:
+> mem.read addr=400 len=16
+< ok addr=0400 len=16 data=f803000000000000780300000000c09f
+# The IVT at 0x0000 points at BIOS ISRs. The first four vectors (INT 0..3)
+# are four bytes each — offset then segment. If they all share a segment
+# we've pinpointed where the BIOS ROM lives in physical memory.
+> mem.read addr=0 len=16
+< ok addr=0000 len=16 data=53ff00f053ff00f0c3e200f053ff00f0
+# At 0xFFFF0 the CPU resets to; the signature bytes just before it often
+# hold a date stamp. Read the tail of segment 0 (our peek window is 16-bit
+# so we can only reach to 0xFFFF here).
+> mem.read addr=fff0 len=16
+< ok addr=fff0 len=16 data=00000000000000000000000000000000
+# Conclusion the model can draw from the above:
+#   CPU:       GenuineIntel, family 6 — Pentium-Pro-or-later IA-32
+#   RAM:       ~128 MB total (conv + ext + 64 KB blocks above 16 MB)
+#   Features:  fpu, tsc, msr, apic, sse, sse2 — post-2001 silicon
+#   Firmware:  IVT vectors point into segment 0xF000, classic PC BIOS layout
+#   COM1 base: read from BDA at 0x0400
+#
+# All of that derived by composing five primitives. No training data needed.

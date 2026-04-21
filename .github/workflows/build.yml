@@ -1,0 +1,40 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install toolchain
+        run: sudo apt-get update && sudo apt-get install -y nasm qemu-system-x86
+
+      - name: Build
+        run: make
+
+      - name: Report sizes
+        run: |
+          echo "boot.bin:   $(wc -c < build/boot.bin) bytes"
+          echo "kernel.bin: $(wc -c < build/kernel.bin) bytes"
+          echo "llmos.img:  $(wc -c < build/llmos.img) bytes"
+
+      - name: Smoke-test the protocol
+        run: |
+          timeout 10 python3 demo/bridge.py \
+            --image build/llmos.img \
+            script demo/transcripts/01_cold_discovery.llmos \
+            | tee /tmp/recording.txt
+          # Verify the banner and at least one `ok` response were emitted.
+          grep -q "^# # llmos v0.1" /tmp/recording.txt
+          grep -q "^< ok primitives=" /tmp/recording.txt
+
+      - name: Upload image
+        uses: actions/upload-artifact@v4
+        with:
+          name: llmos.img
+          path: build/llmos.img

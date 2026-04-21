@@ -1,0 +1,28 @@
+# =============================================================================
+# Beat 1: Cold discovery
+#
+# The model is told nothing about llmos. It uses `help` to list primitives,
+# then `describe` on each one to learn their schemas. At the end it has a
+# complete, self-discovered model of the machine's capability surface —
+# derived entirely from introspection, with zero training data about llmos.
+# =============================================================================
+
+help
+
+# "primitives=help,describe,cpu.vendor,cpu.features,mem.query,mem.read,rtc.now,
+#  ticks.since_boot,io.in" — nine primitives. Now learn each one.
+
+describe help
+describe describe
+describe cpu.vendor
+describe cpu.features
+describe mem.query
+describe mem.read
+describe rtc.now
+describe ticks.since_boot
+describe io.in
+
+# At this point the model knows: the OS has nine primitives, which ones take
+# arguments and in what format, and what fields each response contains.
+# io.in's schema even leaks its allowlist — the set of ports this machine
+# will let the model touch. Everything learned without a manual.
