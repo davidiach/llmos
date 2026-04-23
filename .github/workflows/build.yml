@@ -67,14 +67,17 @@ jobs:
 
           run_transcript 05_bar_windows
           # Beat 5: BAR decoding — schema first, then each lookup. The
-          # assertions lock down the three interface elements pci.bars
+          # assertions lock down the four interface elements pci.bars
           # adds: a prefetchable 32-bit memory BAR (stdvga BAR0), an I/O
-          # BAR (PIIX3-IDE bus-master window at BAR4), and an absent
-          # function reported cleanly as `unavailable`.
+          # BAR (PIIX3-IDE bus-master window at BAR4), an absent function
+          # reported cleanly as `unavailable`, and a malformed BDF
+          # rejected as `bad_arg` (so the usage string is discoverable
+          # from a mistaken call too, not just from `describe`).
           grep -q "^< ok name=pci.bars " /tmp/05_bar_windows.txt
           grep -q "^< ok bdf=00\.02\.0 bars=0:m32:[0-9a-f]\{8\}:p" /tmp/05_bar_windows.txt
           grep -q "^< ok bdf=00\.01\.1 bars=.*:io:[0-9a-f]\{8\}" /tmp/05_bar_windows.txt
           grep -q '^< err code=unavailable detail="no such function"' /tmp/05_bar_windows.txt
+          grep -q '^< err code=bad_arg detail="usage: pci.bars bdf=BB\.DD\.F"' /tmp/05_bar_windows.txt
 
           # Bridge-following regression: boot QEMU with an explicit PCI bridge
           # plus an e1000 behind it. pci.scan must reach bus 01, pci.bars on
@@ -101,9 +104,13 @@ jobs:
           grep -q "^< ok name=pci.scan " /tmp/pci_bridge_probe.txt
           grep -q "^< ok devices=.*00\.04\.0:1b36:0001:06.*01\.02\.0:8086:100e:02" /tmp/pci_bridge_probe.txt
           # Bridge (type 1) MUST list slot 0 and MUST NOT emit a slot 2+
-          # (the handler caps type-1 headers at two BAR slots).
+          # (the handler caps type-1 headers at two BAR slots). QEMU's
+          # pci-bridge wires BAR0 as a 64-bit MMIO window for the shpc
+          # region, so this is also the only smoke coverage of the m64
+          # decode path (high dword first, 16 hex digits of base).
           grep -q "^< ok bdf=00\.04\.0 bars=0:" /tmp/pci_bridge_probe.txt
           ! grep -q "^< ok bdf=00\.04\.0 bars=.*,2:" /tmp/pci_bridge_probe.txt
+          grep -q "^< ok bdf=00\.04\.0 bars=0:m64:[0-9a-f]\{16\}:[pn]" /tmp/pci_bridge_probe.txt
           # e1000 on bus 01 MUST decode its 32-bit MMIO BAR — proves
           # pci.bars works on any bus, not just bus 0.
           grep -q "^< ok bdf=01\.02\.0 bars=0:m32:[0-9a-f]\{8\}:n" /tmp/pci_bridge_probe.txt

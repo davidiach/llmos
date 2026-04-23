@@ -33,7 +33,7 @@
 > describe pci.scan
 < ok name=pci.scan args=none returns="devices=B.D.F:VVVV:DDDD:CC[,...]" scope="bus 0 + any PCI-to-PCI bridges reachable from it; class = base class byte"
 > describe pci.bars
-< ok name=pci.bars args="bdf=BB.DD.F" returns="bdf=BB.DD.F bars=I:KIND[:BASE[:p|n]],..." kinds="none|io:BASE32|m32:BASE32:p|n|m64:BASE64:p|n|mlt1:BASE32:p|n|rsv:BASE32:p|n" slots="6 for header-type 0, 2 for header-type 1, else 0" notes="m64 consumes I+1; bdf format matches pci.scan"
+< ok name=pci.bars args="bdf=BB.DD.F" returns="bdf=BB.DD.F bars=I:KIND[:BASE[:p|n]],..." kinds="none|io:BASE32|m32:BASE32:p|n|m64:BASE64:p|n|m64trunc:BASE32:p|n|mlt1:BASE32:p|n|rsv:BASE32:p|n" slots="6 for header-type 0, 2 for header-type 1, else 0" notes="m64 consumes I+1; m64trunc flags a self-contradictory 64-bit BAR on the last slot; bdf format matches pci.scan"
 # Introspection says `pci.scan` exists; now use it once so the demo and CI
 # both cover the newly-advertised primitive.
 > pci.scan

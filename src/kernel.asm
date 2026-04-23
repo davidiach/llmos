@@ -666,6 +666,9 @@ pci_config_read_dword:
 ;       bits[2:1] = 11 (reserved)  record: `N:rsv:HHHHHHHH:p|n`
 ;     `p` or `n` is the prefetch bit (bit 3) of the low dword.
 ;     An unused slot (raw == 0) is reported as `N:none`.
+;     A 64-bit BAR declared on the last available slot (so there is no room
+;     for the high dword) is reported as `N:m64trunc:HHHHHHHH:p|n` — only
+;     the low 32 bits are reported, and the device is self-contradictory.
 ;
 ;   An unpopulated function yields `err code=unavailable detail="no such
 ;   function"`. A malformed BDF yields `bad_arg`.
@@ -815,9 +818,12 @@ h_pci_bars:
     jmp     .bar_loop
 
 .m64_truncated:
+    ; Self-contradictory device: BAR claims 64-bit but there's no room for
+    ; the high dword. Emit a distinct token so the model can tell this
+    ; apart from a well-formed 32-bit BAR.
     mov     eax, [pci_bar_lo]
     and     eax, 0xFFFFFFF0
-    mov     si, str_m32
+    mov     si, str_m64trunc
     call    serial_puts_only
     call    serial_put_hex_dword
     call    emit_pref_suffix
@@ -1490,6 +1496,7 @@ str_none:           db 'none', 0
 str_io:             db 'io:', 0
 str_m32:            db 'm32:', 0
 str_m64:            db 'm64:', 0
+str_m64trunc:       db 'm64trunc:', 0
 str_mlt1:           db 'mlt1:', 0
 str_rsv:            db 'rsv:', 0
 
@@ -1544,7 +1551,7 @@ sch_rtc_now:    db 'ok name=rtc.now args=none returns="iso=YYYY-MM-DDTHH:MM:SS"'
 sch_ticks:      db 'ok name=ticks.since_boot args=none returns="ms=N"', 0
 sch_io_in:      db 'ok name=io.in args="port=H" returns="port=H value=H" allowlist=0x20,0x21,0x40,0x43,0x60,0x61,0x64,0x70,0x71', 0
 sch_pci_scan:   db 'ok name=pci.scan args=none returns="devices=B.D.F:VVVV:DDDD:CC[,...]" scope="bus 0 + any PCI-to-PCI bridges reachable from it; class = base class byte"', 0
-sch_pci_bars:   db 'ok name=pci.bars args="bdf=BB.DD.F" returns="bdf=BB.DD.F bars=I:KIND[:BASE[:p|n]],..." kinds="none|io:BASE32|m32:BASE32:p|n|m64:BASE64:p|n|mlt1:BASE32:p|n|rsv:BASE32:p|n" slots="6 for header-type 0, 2 for header-type 1, else 0" notes="m64 consumes I+1; bdf format matches pci.scan"', 0
+sch_pci_bars:   db 'ok name=pci.bars args="bdf=BB.DD.F" returns="bdf=BB.DD.F bars=I:KIND[:BASE[:p|n]],..." kinds="none|io:BASE32|m32:BASE32:p|n|m64:BASE64:p|n|m64trunc:BASE32:p|n|mlt1:BASE32:p|n|rsv:BASE32:p|n" slots="6 for header-type 0, 2 for header-type 1, else 0" notes="m64 consumes I+1; m64trunc flags a self-contradictory 64-bit BAR on the last slot; bdf format matches pci.scan"', 0
 
 ; io.in allowlist (terminator 0xFFFF)
 io_allowlist:

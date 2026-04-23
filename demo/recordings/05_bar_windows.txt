@@ -18,7 +18,7 @@
 < ok devices=00.00.0:8086:1237:06,00.01.0:8086:7000:06,00.01.1:8086:7010:01,00.01.3:8086:7113:06,00.02.0:1234:1111:03,00.03.0:8086:100e:02
 # And the schema of the new primitive so the record grammar is explicit.
 > describe pci.bars
-< ok name=pci.bars args="bdf=BB.DD.F" returns="bdf=BB.DD.F bars=I:KIND[:BASE[:p|n]],..." kinds="none|io:BASE32|m32:BASE32:p|n|m64:BASE64:p|n|mlt1:BASE32:p|n|rsv:BASE32:p|n" slots="6 for header-type 0, 2 for header-type 1, else 0" notes="m64 consumes I+1; bdf format matches pci.scan"
+< ok name=pci.bars args="bdf=BB.DD.F" returns="bdf=BB.DD.F bars=I:KIND[:BASE[:p|n]],..." kinds="none|io:BASE32|m32:BASE32:p|n|m64:BASE64:p|n|m64trunc:BASE32:p|n|mlt1:BASE32:p|n|rsv:BASE32:p|n" slots="6 for header-type 0, 2 for header-type 1, else 0" notes="m64 consumes I+1; m64trunc flags a self-contradictory 64-bit BAR on the last slot; bdf format matches pci.scan"
 # Host bridge (i440FX): no BARs populated — a host bridge is the CPU-to-PCI
 # path, not a PCI target. Every slot reports `none`.
 > pci.bars bdf=00.00.0

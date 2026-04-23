@@ -161,6 +161,7 @@ names the encoding in the low three bits of the raw BAR dword:
 | `I:io:BASE32`            | bit 0 = 1 — I/O space BAR                    |
 | `I:m32:BASE32:p\|n`      | bit 0 = 0, type bits [2:1] = 00 — 32-bit mem |
 | `I:m64:BASE64:p\|n`      | bit 0 = 0, type bits [2:1] = 10 — 64-bit mem |
+| `I:m64trunc:BASE32:p\|n` | 64-bit BAR declared on the last slot         |
 | `I:mlt1:BASE32:p\|n`     | bit 0 = 0, type bits [2:1] = 01 — legacy     |
 | `I:rsv:BASE32:p\|n`      | bit 0 = 0, type bits [2:1] = 11 — reserved   |
 
@@ -169,7 +170,9 @@ hex digits (high dword first, then low dword). `p` marks the memory
 BAR as prefetchable (bit 3 of the low dword set), `n` as non-
 prefetchable. A 64-bit memory BAR consumes the next slot as its high
 dword; the consumed slot is skipped in the list (the indices are
-non-contiguous).
+non-contiguous). `m64trunc` is emitted only for a self-contradictory
+device that declares a 64-bit BAR on the last available slot (no room
+for the high dword); only the low 32 bits of the base are reported.
 
 An unpopulated function (vendor id reads as `ffff`) yields
 `err code=unavailable detail="no such function"`. A malformed `bdf`
