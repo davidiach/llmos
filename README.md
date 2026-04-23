@@ -24,9 +24,9 @@ The model bootstraps its understanding of the machine from the inside —
 it composes.
 
 ```
-# llmos v0.1 proto=1 primitives=10
+# llmos v0.1 proto=1 primitives=11
 > help
-< ok primitives=help,describe,cpu.vendor,cpu.features,mem.query,mem.read,rtc.now,ticks.since_boot,io.in,pci.scan
+< ok primitives=help,describe,cpu.vendor,cpu.features,mem.query,mem.read,rtc.now,ticks.since_boot,io.in,pci.scan,pci.bars
 > cpu.vendor
 < ok vendor=GenuineIntel family=6 model=6 stepping=3
 > mem.read addr=7c00 len=16
@@ -79,6 +79,7 @@ See `docs/PROTOCOL.md` for the full wire spec.
 | `ticks.since_boot` | none                        | `ms=N`                                          |
 | `io.in`            | `port=H`                    | `port=H value=H` or `err code=denied`           |
 | `pci.scan`         | none                        | `devices=B.D.F:VVVV:DDDD:CC[,...]` (bus 0 + bridges) |
+| `pci.bars`         | `bdf=BB.DD.F`               | `bdf=BB.DD.F bars=I:KIND[:BASE[:p\|n]],...`     |
 
 `io.in`'s allowlist is introspectable: `describe io.in` includes the full
 list. At the moment it covers the PIC (0x20, 0x21), PIT (0x40, 0x43),
@@ -92,6 +93,17 @@ bridge (header type 0x01), it enqueues the bridge's secondary bus and
 keeps walking — so the response is the entire reachable tree, not just
 bus 0. QEMU's default chipset has no bridges on bus 0, so the output is
 flat there; add `-device pci-bridge,...` and the scan follows into bus 1.
+
+`pci.bars` takes one of those `BB.DD.F` tuples back and decodes the
+function's Base Address Registers. Each record is `I:KIND[:BASE[:p|n]]`
+where `I` is the BAR index, `KIND` is one of `none`, `io`, `m32`, `m64`,
+`mlt1` (legacy <1 MB), or `rsv` (reserved encoding), `BASE` is the base
+address in lowercase hex (8 digits for 32-bit kinds, 16 for `m64`), and
+the `:p`/`:n` suffix marks memory BARs as prefetchable or not. A 64-bit
+BAR consumes the next slot, which is then omitted from the list. Type-0
+headers report six slots; type-1 (PCI-to-PCI bridge) headers report two;
+other header types return an empty `bars=`. An unpopulated function
+yields `err code=unavailable`.
 
 ## Running it
 
@@ -128,7 +140,7 @@ Empty line to quit.
 python3 demo/bridge.py script demo/transcripts/01_cold_discovery.llmos
 ```
 
-The repo ships with four transcripts — the four demo beats described
+The repo ships with five transcripts — the five demo beats described
 below.
 
 ### Let Claude drive
@@ -142,7 +154,7 @@ The bridge hands Claude the boot banner and a tight system prompt, then
 lets it issue one command per turn. It runs until Claude emits `DONE` or
 the step limit is hit (default 20).
 
-## The demo, in four beats
+## The demo, in five beats
 
 **Beat 1 — Cold discovery.** Claude is told nothing about llmos except that
 `help` exists. It walks the introspection graph — `help`, then `describe`
@@ -181,7 +193,21 @@ both.
 
 Transcript: `demo/transcripts/04_pci_walk.llmos`.
 
-Recorded outputs for all four live in `demo/recordings/`.
+**Beat 5 — BAR windows.** Task: *for each device on the bus, describe its
+I/O and memory windows*. Claude takes the `BB.DD.F` records from beat 4
+back into `pci.bars` and reads the six Base Address Registers per
+function. It sees the framebuffer BAR on the std-vga card (32-bit,
+prefetchable — that's how the CPU knows speculative reads are safe),
+distinguishes it from the MMIO-register BAR on the same card (non-
+prefetchable — side effects), and finds the bus-master IDE I/O window on
+the PIIX3 controller whose legacy command ports beat 3 couldn't touch.
+Two views of the same hardware, now fully named. The BARs it reads here
+are the addresses a future primitive like `mmio.read` would need to
+speak to each device directly.
+
+Transcript: `demo/transcripts/05_bar_windows.llmos`.
+
+Recorded outputs for all five live in `demo/recordings/`.
 
 ## Layout
 
@@ -217,9 +243,10 @@ docs/
   segment-switching primitive yet.
 - `io.out` is deliberately absent in v0.1 — the allowlist for writes wants
   more design thought than reads.
-- `pci.scan` follows PCI-to-PCI bridges but does not expose BARs — the
-  model sees the device graph, not device memory windows. Reading BARs
-  (and then memory-mapped registers behind them) would be the next step.
+- `pci.scan` and `pci.bars` together expose the device graph and each
+  function's address windows, but there is no primitive yet to *read*
+  those windows. Reaching a BAR's MMIO registers (some `mmio.read`
+  primitive, subject to its own allowlist) would be the next step.
 - No crypto, no storage, no networking, no interrupts of our own. Every
   non-trivial hardware interaction rides on the BIOS.
 - The kernel is tiny on purpose. "Add a feature" almost always means "add

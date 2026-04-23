@@ -1,4 +1,4 @@
-# # llmos v0.1 proto=1 primitives=10
+# # llmos v0.1 proto=1 primitives=11
 # =============================================================================
 # Beat 2: Hardware archaeology
 #
@@ -20,9 +20,9 @@
 # Wall-clock time — and from ticks.since_boot we can note the machine was
 # started only moments ago.
 > rtc.now
-< ok iso=2026-04-21T18:19:48
+< ok iso=2026-04-23T11:36:42
 > ticks.since_boot
-< ok ms=0
+< ok ms=55
 # The CMOS RTC ports are 0x70 (index) and 0x71 (data). Reading register 0x0D
 # gives the RTC status register D — bit 7 is "valid RAM and time".
 # First select register 0x0D by writing... wait, we only have io.in, not

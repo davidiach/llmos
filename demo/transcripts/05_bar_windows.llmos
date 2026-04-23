@@ -1,0 +1,67 @@
+# =============================================================================
+# Beat 5: BAR windows — from device graph to device memory
+#
+# Task handed to the model: "For each device on the bus, describe its I/O
+# and memory windows."
+#
+# Beat 4 gave the model a vendor-id/class census of the machine. This beat
+# goes one layer deeper: pci.bars reads the six Base Address Registers
+# (two for bridges) of a given function and decodes the encoding — I/O vs
+# 32-bit vs 64-bit memory, prefetchable vs not, and the base address — so
+# the model can name the actual MMIO/IO windows each device owns.
+#
+# The BDF argument format matches pci.scan's output: BB.DD.F.
+# =============================================================================
+
+# Baseline: what's on the bus again?
+pci.scan
+
+# And the schema of the new primitive so the record grammar is explicit.
+describe pci.bars
+
+# Host bridge (i440FX): no BARs populated — a host bridge is the CPU-to-PCI
+# path, not a PCI target. Every slot reports `none`.
+pci.bars bdf=00.00.0
+
+# PIIX3 ISA bridge: also no BARs — the south bridge exposes itself as a
+# device on the bus but drives legacy ISA through fixed ports, not BARs.
+pci.bars bdf=00.01.0
+
+# PIIX3 IDE: BAR4 is the bus-master IDE I/O window (16 bytes). The command
+# and control blocks live at fixed legacy ports (0x1F0/0x170/0x3F6/...),
+# which is why io.in at 0x1F0 was denied in beat 3 — those don't come from
+# BARs, they come from legacy decoding in the south bridge.
+pci.bars bdf=00.01.1
+
+# PIIX4 ACPI bridge: no PCI BARs in QEMU's build.
+pci.bars bdf=00.01.3
+
+# std-vga display: this one is interesting. BAR0 is prefetchable (`p`) —
+# that's the framebuffer, which the CPU can write to freely and which the
+# GPU can reorder reads from. BAR2 is non-prefetchable (`n`) — MMIO
+# registers, where write ordering matters. The `p`/`n` suffix is exactly
+# that distinction.
+pci.bars bdf=00.02.0
+
+# e1000 NIC: BAR0 is the MMIO register window (non-prefetchable — NIC
+# registers have side effects, you can't speculatively read them). BAR1 is
+# an I/O-space alias for register access on systems where MMIO isn't
+# available.
+pci.bars bdf=00.03.0
+
+# Out-of-tree function: the slot's vendor id reads as ffff, meaning no
+# function answers. pci.bars reports this cleanly as `unavailable`, the
+# same code family io.in uses when the hardware isn't there — denial vs.
+# absence vs. malformed-argument are three distinct interface elements.
+pci.bars bdf=00.1f.0
+
+# Malformed BDF: bad_arg. The schema told the model the required shape;
+# the kernel enforces it.
+pci.bars bdf=xx
+
+# Putting it all together, the model has now walked the three PCI views:
+#   pci.scan  -> what is there (vendor, device, class)
+#   pci.bars  -> where in the address space each function lives
+#   io.in     -> what the allowlist lets it actually poke
+# The BAR bases it read here are exactly the addresses a future primitive
+# like `mmio.read` would need to reach the device registers.
