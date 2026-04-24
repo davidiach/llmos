@@ -257,7 +257,8 @@ Arguments:
 
 - `bdf` - same `BB.DD.F` tuple emitted by `pci.scan`
 - `bar` - decimal BAR slot index (`0`-`5`, further capped by header type)
-- `offset` - hex byte offset from the BAR base (`0`-`ff`)
+- `offset` - hex byte offset from the BAR base (`0`-`ff`); `read16` and
+  `read32` require natural alignment
 
 The responses are:
 
@@ -274,5 +275,6 @@ address-order byte string that `pci.mem.read` returns.
 
 The same memory-BAR restrictions and error behavior apply: I/O BARs are
 denied, empty BARs are unavailable, unsupported memory BARs are unavailable,
-and high 64-bit addresses are out of range. Out-of-range BAR slots or
-offsets return `err code=out_of_range detail="bar or offset out of range"`.
+and high 64-bit addresses are out of range. Out-of-range BAR slots,
+offsets, or unaligned multi-byte offsets return
+`err code=out_of_range detail="bar, offset, or alignment out of range"`.

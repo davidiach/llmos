@@ -83,8 +83,8 @@ See `docs/PROTOCOL.md` for the full wire spec.
 | `pci.bar.read`     | `bdf=BB.DD.F bar=N offset=H len=N(1-16)` | `bdf=BB.DD.F bar=N kind=io port=H offset=H len=N data=HEX` |
 | `pci.mem.read`     | `bdf=BB.DD.F bar=N offset=H len=N(1-16)` | `bdf=BB.DD.F bar=N kind=m32\|m64\|mlt1 addr=H offset=H len=N data=HEX` |
 | `pci.mem.read8`    | `bdf=BB.DD.F bar=N offset=H` | `bdf=BB.DD.F bar=N kind=m32\|m64\|mlt1 addr=H offset=H width=8 value=HH` |
-| `pci.mem.read16`   | `bdf=BB.DD.F bar=N offset=H` | `bdf=BB.DD.F bar=N kind=m32\|m64\|mlt1 addr=H offset=H width=16 value=HHHH` |
-| `pci.mem.read32`   | `bdf=BB.DD.F bar=N offset=H` | `bdf=BB.DD.F bar=N kind=m32\|m64\|mlt1 addr=H offset=H width=32 value=HHHHHHHH` |
+| `pci.mem.read16`   | `bdf=BB.DD.F bar=N offset=H(aligned)` | `bdf=BB.DD.F bar=N kind=m32\|m64\|mlt1 addr=H offset=H width=16 value=HHHH` |
+| `pci.mem.read32`   | `bdf=BB.DD.F bar=N offset=H(aligned)` | `bdf=BB.DD.F bar=N kind=m32\|m64\|mlt1 addr=H offset=H width=32 value=HHHHHHHH` |
 
 `io.in`'s allowlist is introspectable: `describe io.in` includes the full
 list. At the moment it covers the PIC (0x20, 0x21), PIT (0x40, 0x43),
@@ -130,6 +130,7 @@ BARs with a non-zero high dword are rejected as out of range.
 siblings for register probing. They keep the same `bdf`/`bar`/`offset`
 addressing discipline, but return `width=N value=HEX` so a model can work
 with little-endian register values without manually decoding byte strings.
+The 16- and 32-bit forms require natural alignment.
 
 ## Running it
 

@@ -1278,6 +1278,17 @@ h_pci_mem_read_typed:
     cmp     ax, 0x00FF
     ja      .range
     mov     [pci_bar_offset], ax
+    cmp     word [pci_bar_len], 1
+    je      .aligned
+    cmp     word [pci_bar_len], 2
+    jne     .align32
+    test    ax, 0x0001
+    jnz     .range
+    jmp     .aligned
+.align32:
+    test    ax, 0x0003
+    jnz     .range
+.aligned:
 
     ; Probe presence via vendor id at config offset 0x00.
     xor     al, al
@@ -2188,7 +2199,7 @@ err_pci_mem_unsupported:
 err_pci_mem_addr_range:
     db 'err code=out_of_range detail="MMIO address exceeds 32-bit space"', 0
 err_pci_mem_typed_range:
-    db 'err code=out_of_range detail="bar or offset out of range"', 0
+    db 'err code=out_of_range detail="bar, offset, or alignment out of range"', 0
 
 ; Help response (full line).
 help_response:
@@ -2228,8 +2239,8 @@ sch_pci_bars:   db 'ok name=pci.bars args="bdf=BB.DD.F" returns="bdf=BB.DD.F bar
 sch_pci_bar_read: db 'ok name=pci.bar.read args="bdf=BB.DD.F bar=N offset=H(0-ff) len=N(1-16)" returns="bdf=BB.DD.F bar=N kind=io port=H offset=H len=N data=HEX" notes="reads I/O-space BARs only; memory BARs return denied"', 0
 sch_pci_mem_read: db 'ok name=pci.mem.read args="bdf=BB.DD.F bar=N offset=H(0-ff) len=N(1-16)" returns="bdf=BB.DD.F bar=N kind=m32|m64|mlt1 addr=H offset=H len=N data=HEX" notes="reads memory-space BARs only via flat FS; I/O BARs return denied; 64-bit BARs require high dword zero"', 0
 sch_pci_mem_read8: db 'ok name=pci.mem.read8 args="bdf=BB.DD.F bar=N offset=H(0-ff)" returns="bdf=BB.DD.F bar=N kind=m32|m64|mlt1 addr=H offset=H width=8 value=HH" notes="reads one little-endian byte from a memory BAR; I/O BARs return denied"', 0
-sch_pci_mem_read16: db 'ok name=pci.mem.read16 args="bdf=BB.DD.F bar=N offset=H(0-ff)" returns="bdf=BB.DD.F bar=N kind=m32|m64|mlt1 addr=H offset=H width=16 value=HHHH" notes="reads one little-endian word from a memory BAR; I/O BARs return denied"', 0
-sch_pci_mem_read32: db 'ok name=pci.mem.read32 args="bdf=BB.DD.F bar=N offset=H(0-ff)" returns="bdf=BB.DD.F bar=N kind=m32|m64|mlt1 addr=H offset=H width=32 value=HHHHHHHH" notes="reads one little-endian dword from a memory BAR; I/O BARs return denied"', 0
+sch_pci_mem_read16: db 'ok name=pci.mem.read16 args="bdf=BB.DD.F bar=N offset=H(0-ff,aligned)" returns="bdf=BB.DD.F bar=N kind=m32|m64|mlt1 addr=H offset=H width=16 value=HHHH" notes="reads one little-endian aligned word from a memory BAR; I/O BARs return denied"', 0
+sch_pci_mem_read32: db 'ok name=pci.mem.read32 args="bdf=BB.DD.F bar=N offset=H(0-ff,aligned)" returns="bdf=BB.DD.F bar=N kind=m32|m64|mlt1 addr=H offset=H width=32 value=HHHHHHHH" notes="reads one little-endian aligned dword from a memory BAR; I/O BARs return denied"', 0
 
 align 8
 flat_gdt:

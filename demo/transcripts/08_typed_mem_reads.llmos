@@ -29,5 +29,8 @@ pci.mem.read32 bdf=00.01.1 bar=0 offset=0
 # Slot ranges remain bounded by the device header type.
 pci.mem.read32 bdf=00.02.0 bar=6 offset=0
 
+# Multi-byte typed reads require natural alignment.
+pci.mem.read32 bdf=00.02.0 bar=2 offset=1
+
 # Malformed BDFs still fail before config-space probing.
 pci.mem.read32 bdf=00.02.0x bar=0 offset=0

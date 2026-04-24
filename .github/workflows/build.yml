@@ -122,7 +122,9 @@ jobs:
           grep -q "^< ok bdf=00\.02\.0 bar=2 kind=m32 addr=[0-9a-f]\{8\} offset=0000 width=32 value=[0-9a-f]\{8\}" /tmp/08_typed_mem_reads.txt
           grep -q '^< err code=denied detail="only memory BAR reads are supported"' /tmp/08_typed_mem_reads.txt
           grep -q '^< err code=unavailable detail="BAR not present"' /tmp/08_typed_mem_reads.txt
-          grep -q '^< err code=out_of_range detail="bar or offset out of range"' /tmp/08_typed_mem_reads.txt
+          grep -q '^< err code=out_of_range detail="bar, offset, or alignment out of range"' /tmp/08_typed_mem_reads.txt
+          grep -A1 "^> pci\.mem\.read32 bdf=00\.02\.0 bar=2 offset=1" /tmp/08_typed_mem_reads.txt \
+            | grep -q '^< err code=out_of_range detail="bar, offset, or alignment out of range"'
           grep -A1 "^> pci\.mem\.read32 bdf=00\.02\.0x" /tmp/08_typed_mem_reads.txt \
             | grep -q '^< err code=bad_arg detail="usage: pci.mem.read32 bdf=BB\.DD\.F bar=N offset=HHHH"'
 
