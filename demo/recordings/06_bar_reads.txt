@@ -1,0 +1,38 @@
+# # llmos v0.1 proto=1 primitives=12
+# =============================================================================
+# Beat 6: BAR reads - from address windows to register bytes
+#
+# Task handed to the model: "Read a device register window through a BAR."
+#
+# Beat 5 found the BAR windows. This beat uses one of them. The primitive is
+# deliberately narrower than arbitrary port I/O: the model must name the PCI
+# function, choose a BAR slot, and give a small offset and length.
+# =============================================================================
+# Baseline: rediscover the bus and the BAR that we are about to touch.
+> pci.scan
+< ok devices=00.00.0:8086:1237:06,00.01.0:8086:7000:06,00.01.1:8086:7010:01,00.01.3:8086:7113:06,00.02.0:1234:1111:03,00.03.0:8086:100e:02
+> describe pci.bar.read
+< ok name=pci.bar.read args="bdf=BB.DD.F bar=N offset=H(0-ff) len=N(1-16)" returns="bdf=BB.DD.F bar=N kind=io port=H offset=H len=N data=HEX" notes="reads I/O-space BARs only; memory BARs return denied"
+> pci.bars bdf=00.01.1
+< ok bdf=00.01.1 bars=0:none,1:none,2:none,3:none,4:io:0000c040,5:none
+# PIIX3 IDE exposes its bus-master register block through BAR4. Read the
+# first four bytes from that I/O window.
+> pci.bar.read bdf=00.01.1 bar=4 offset=0 len=4
+< ok bdf=00.01.1 bar=4 kind=io port=c040 offset=0000 len=4 data=00ff00ff
+# Offsets are BAR-relative. This reads two bytes farther into the same
+# bus-master IDE window, without granting arbitrary access to all ports.
+> pci.bar.read bdf=00.01.1 bar=4 offset=2 len=2
+< ok bdf=00.01.1 bar=4 kind=io port=c042 offset=0002 len=2 data=00ff
+# A memory BAR is not an I/O BAR. The primitive names the boundary with
+# denied instead of pretending real mode can dereference high MMIO.
+> pci.bar.read bdf=00.02.0 bar=0 offset=0 len=4
+< err code=denied detail="only I/O BAR reads are supported"
+# An empty BAR slot is absence, not policy denial.
+> pci.bar.read bdf=00.01.1 bar=0 offset=0 len=1
+< err code=unavailable detail="BAR not present"
+# The read window is intentionally small.
+> pci.bar.read bdf=00.01.1 bar=4 offset=0 len=17
+< err code=out_of_range detail="bar, offset, or len out of range"
+# Malformed BDFs still fail before the kernel touches config space.
+> pci.bar.read bdf=00.02.0x bar=0 offset=0 len=1
+< err code=bad_arg detail="usage: pci.bar.read bdf=BB.DD.F bar=N offset=HHHH len=N"

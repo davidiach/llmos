@@ -63,9 +63,8 @@ pci.bars bdf=xx
 # parser must consume the whole BDF token, not just the prefix.
 pci.bars bdf=00.02.0x
 
-# Putting it all together, the model has now walked the three PCI views:
+# Putting it all together, the model has now walked the three PCI naming views:
 #   pci.scan  -> what is there (vendor, device, class)
 #   pci.bars  -> where in the address space each function lives
 #   io.in     -> what the allowlist lets it actually poke
-# The BAR bases it read here are exactly the addresses a future primitive
-# like `mmio.read` would need to reach the device registers.
+# Beat 6 uses one of those I/O BAR bases through pci.bar.read.

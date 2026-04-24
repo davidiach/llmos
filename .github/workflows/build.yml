@@ -46,6 +46,7 @@ jobs:
           # reaches pci.scan, and pci.scan itself returns a populated bus walk.
           grep -q "^< ok primitives=help,describe" /tmp/01_cold_discovery.txt
           grep -q "^< ok name=pci.scan " /tmp/01_cold_discovery.txt
+          grep -q "^< ok name=pci.bar.read " /tmp/01_cold_discovery.txt
           grep -q "^< ok devices=00\.00\.0:" /tmp/01_cold_discovery.txt
 
           run_transcript 02_hardware_archaeology
@@ -80,6 +81,19 @@ jobs:
           grep -q '^< err code=bad_arg detail="usage: pci.bars bdf=BB\.DD\.F"' /tmp/05_bar_windows.txt
           grep -A1 "^> pci\.bars bdf=00\.02\.0x" /tmp/05_bar_windows.txt \
             | grep -q '^< err code=bad_arg detail="usage: pci.bars bdf=BB\.DD\.F"'
+
+          run_transcript 06_bar_reads
+          # Beat 6: BAR-bound reads - schema first, then a successful
+          # I/O-space BAR read. Memory BARs are denied, empty BARs are
+          # unavailable, and the small bounded read window rejects len=17.
+          grep -q "^< ok name=pci.bar.read " /tmp/06_bar_reads.txt
+          grep -q "^< ok bdf=00\.01\.1 bar=4 kind=io port=[0-9a-f]\{4\} offset=0000 len=4 data=[0-9a-f]\{8\}" /tmp/06_bar_reads.txt
+          grep -q "^< ok bdf=00\.01\.1 bar=4 kind=io port=[0-9a-f]\{4\} offset=0002 len=2 data=[0-9a-f]\{4\}" /tmp/06_bar_reads.txt
+          grep -q '^< err code=denied detail="only I/O BAR reads are supported"' /tmp/06_bar_reads.txt
+          grep -q '^< err code=unavailable detail="BAR not present"' /tmp/06_bar_reads.txt
+          grep -q '^< err code=out_of_range detail="bar, offset, or len out of range"' /tmp/06_bar_reads.txt
+          grep -A1 "^> pci\.bar\.read bdf=00\.02\.0x" /tmp/06_bar_reads.txt \
+            | grep -q '^< err code=bad_arg detail="usage: pci.bar.read bdf=BB\.DD\.F bar=N offset=HHHH len=N"'
 
           # Bridge-following regression: boot QEMU with an explicit PCI bridge
           # plus an e1000 behind it. pci.scan must reach bus 01, pci.bars on

@@ -77,7 +77,7 @@ Error codes in v1:
 On reset, the kernel sets up serial and emits:
 
 ```
-# llmos v0.1 proto=1 primitives=11
+# llmos v0.1 proto=1 primitives=12
 ```
 
 A bridge MUST wait for a line whose first character is `#` before sending
@@ -178,3 +178,34 @@ An unpopulated function (vendor id reads as `ffff`) yields
 `err code=unavailable detail="no such function"`. A malformed `bdf`
 argument, including trailing junk after the function digit, yields
 `err code=bad_arg`.
+
+## BAR-bound I/O reads
+
+`pci.bar.read bdf=BB.DD.F bar=N offset=H len=N` reads bytes from an
+I/O-space BAR discovered through `pci.bars`. It is intentionally
+BAR-relative: the caller names a PCI function, chooses one BAR slot, and
+uses a small offset from that BAR rather than an arbitrary port number.
+
+Arguments:
+
+- `bdf` - same `BB.DD.F` tuple emitted by `pci.scan`
+- `bar` - decimal BAR slot index (`0`-`5`, further capped by header type)
+- `offset` - hex byte offset from the BAR base (`0`-`ff`)
+- `len` - number of bytes to read (`1`-`16`)
+
+The response is:
+
+```
+ok bdf=BB.DD.F bar=N kind=io port=HHHH offset=HHHH len=N data=HEX
+```
+
+`port` is the effective 16-bit I/O port after adding `offset` to the BAR
+base. `data` is `len` bytes read with 8-bit `in` instructions and
+hex-encoded in order.
+
+If the function is absent, the response is
+`err code=unavailable detail="no such function"`. If the selected BAR is
+empty, the response is `err code=unavailable detail="BAR not present"`.
+If the BAR is memory-space rather than I/O-space, the response is
+`err code=denied detail="only I/O BAR reads are supported"`. Out-of-range
+slot, offset, length, or effective port values return `out_of_range`.
