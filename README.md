@@ -97,13 +97,15 @@ flat there; add `-device pci-bridge,...` and the scan follows into bus 1.
 `pci.bars` takes one of those `BB.DD.F` tuples back and decodes the
 function's Base Address Registers. Each record is `I:KIND[:BASE[:p|n]]`
 where `I` is the BAR index, `KIND` is one of `none`, `io`, `m32`, `m64`,
-`mlt1` (legacy <1 MB), or `rsv` (reserved encoding), `BASE` is the base
-address in lowercase hex (8 digits for 32-bit kinds, 16 for `m64`), and
-the `:p`/`:n` suffix marks memory BARs as prefetchable or not. A 64-bit
+`m64trunc`, `mlt1` (legacy <1 MB), or `rsv` (reserved encoding), `BASE`
+is the base address in lowercase hex (8 digits for 32-bit kinds, 16 for
+`m64`), and the `:p`/`:n` suffix marks memory BARs as prefetchable or not.
+A 64-bit
 BAR consumes the next slot, which is then omitted from the list. Type-0
 headers report six slots; type-1 (PCI-to-PCI bridge) headers report two;
 other header types return an empty `bars=`. An unpopulated function
-yields `err code=unavailable`.
+yields `err code=unavailable`; a malformed BDF, including trailing junk
+after the function digit, yields `err code=bad_arg`.
 
 ## Running it
 

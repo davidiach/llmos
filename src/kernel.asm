@@ -875,8 +875,9 @@ emit_pref_suffix:
     ret
 
 ; parse_bdf: DS:SI -> "BB.DD.F" where BB and DD are 1-4 hex digits (bounded
-; by bus<=0xFF, device<=0x1F) and F is a single decimal digit 0..7. Writes
-; pci_bus/pci_dev/pci_fn. CF=0 on success.
+; by bus<=0xFF, device<=0x1F) and F is a single decimal digit 0..7 followed
+; by end-of-string or an argument separator. Writes pci_bus/pci_dev/pci_fn.
+; CF=0 on success.
 parse_bdf:
     call    parse_hex_word
     jc      .bad
@@ -899,6 +900,13 @@ parse_bdf:
     cmp     al, 7
     ja      .bad
     mov     [pci_fn], al
+    inc     si
+    mov     al, [si]
+    test    al, al
+    jz      .ok
+    cmp     al, ' '
+    jne     .bad
+.ok:
     clc
     ret
 .bad:

@@ -176,4 +176,5 @@ for the high dword); only the low 32 bits of the base are reported.
 
 An unpopulated function (vendor id reads as `ffff`) yields
 `err code=unavailable detail="no such function"`. A malformed `bdf`
-argument yields `err code=bad_arg`.
+argument, including trailing junk after the function digit, yields
+`err code=bad_arg`.

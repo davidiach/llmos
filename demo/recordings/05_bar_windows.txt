@@ -59,6 +59,10 @@
 # the kernel enforces it.
 > pci.bars bdf=xx
 < err code=bad_arg detail="usage: pci.bars bdf=BB.DD.F"
+# Trailing junk in an otherwise valid-looking tuple is malformed too; the
+# parser must consume the whole BDF token, not just the prefix.
+> pci.bars bdf=00.02.0x
+< err code=bad_arg detail="usage: pci.bars bdf=BB.DD.F"
 # Putting it all together, the model has now walked the three PCI views:
 #   pci.scan  -> what is there (vendor, device, class)
 #   pci.bars  -> where in the address space each function lives

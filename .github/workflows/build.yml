@@ -78,6 +78,8 @@ jobs:
           grep -q "^< ok bdf=00\.01\.1 bars=.*:io:[0-9a-f]\{8\}" /tmp/05_bar_windows.txt
           grep -q '^< err code=unavailable detail="no such function"' /tmp/05_bar_windows.txt
           grep -q '^< err code=bad_arg detail="usage: pci.bars bdf=BB\.DD\.F"' /tmp/05_bar_windows.txt
+          grep -A1 "^> pci\.bars bdf=00\.02\.0x" /tmp/05_bar_windows.txt \
+            | grep -q '^< err code=bad_arg detail="usage: pci.bars bdf=BB\.DD\.F"'
 
           # Bridge-following regression: boot QEMU with an explicit PCI bridge
           # plus an e1000 behind it. pci.scan must reach bus 01, pci.bars on
