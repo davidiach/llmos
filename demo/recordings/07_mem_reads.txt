@@ -1,0 +1,36 @@
+# # llmos v0.1 proto=1 primitives=13
+# =============================================================================
+# Beat 7: Memory BAR reads - crossing the real-mode wall
+#
+# Task handed to the model: "Read bytes from a memory-mapped device window."
+#
+# Beat 6 read an I/O BAR. This beat uses the sibling primitive for memory
+# BARs. The protocol is still BAR-relative, but the kernel reaches high MMIO
+# addresses through a flat FS descriptor cache set up with unreal mode.
+# =============================================================================
+# Rediscover the display device and its memory BARs.
+> pci.scan
+< ok devices=00.00.0:8086:1237:06,00.01.0:8086:7000:06,00.01.1:8086:7010:01,00.01.3:8086:7113:06,00.02.0:1234:1111:03,00.03.0:8086:100e:02
+> describe pci.mem.read
+< ok name=pci.mem.read args="bdf=BB.DD.F bar=N offset=H(0-ff) len=N(1-16)" returns="bdf=BB.DD.F bar=N kind=m32|m64|mlt1 addr=H offset=H len=N data=HEX" notes="reads memory-space BARs only via flat FS; I/O BARs return denied; 64-bit BARs require high dword zero"
+> pci.bars bdf=00.02.0
+< ok bdf=00.02.0 bars=0:m32:fd000000:p,1:none,2:m32:febb0000:n,3:none,4:none,5:none
+# std-vga BAR0 is the framebuffer window. Read the first four bytes.
+> pci.mem.read bdf=00.02.0 bar=0 offset=0 len=4
+< ok bdf=00.02.0 bar=0 kind=m32 addr=fd000000 offset=0000 len=4 data=2b070000
+# BAR2 is a non-prefetchable MMIO register window. Read four bytes from it
+# too; the record shape is identical, but the BAR kind remains memory.
+> pci.mem.read bdf=00.02.0 bar=2 offset=0 len=4
+< ok bdf=00.02.0 bar=2 kind=m32 addr=febb0000 offset=0000 len=4 data=00ffffff
+# I/O BARs are denied here. Beat 6 owns that side of the split.
+> pci.mem.read bdf=00.01.1 bar=4 offset=0 len=1
+< err code=denied detail="only memory BAR reads are supported"
+# Empty BARs are absence, not denial.
+> pci.mem.read bdf=00.01.1 bar=0 offset=0 len=1
+< err code=unavailable detail="BAR not present"
+# Keep MMIO reads bounded.
+> pci.mem.read bdf=00.02.0 bar=0 offset=0 len=17
+< err code=out_of_range detail="bar, offset, or len out of range"
+# Malformed BDFs still fail before config-space probing.
+> pci.mem.read bdf=00.02.0x bar=0 offset=0 len=1
+< err code=bad_arg detail="usage: pci.mem.read bdf=BB.DD.F bar=N offset=HHHH len=N"

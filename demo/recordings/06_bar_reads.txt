@@ -1,4 +1,4 @@
-# # llmos v0.1 proto=1 primitives=12
+# # llmos v0.1 proto=1 primitives=13
 # =============================================================================
 # Beat 6: BAR reads - from address windows to register bytes
 #

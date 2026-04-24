@@ -77,7 +77,7 @@ Error codes in v1:
 On reset, the kernel sets up serial and emits:
 
 ```
-# llmos v0.1 proto=1 primitives=12
+# llmos v0.1 proto=1 primitives=13
 ```
 
 A bridge MUST wait for a line whose first character is `#` before sending
@@ -209,3 +209,39 @@ empty, the response is `err code=unavailable detail="BAR not present"`.
 If the BAR is memory-space rather than I/O-space, the response is
 `err code=denied detail="only I/O BAR reads are supported"`. Out-of-range
 slot, offset, length, or effective port values return `out_of_range`.
+
+## BAR-bound memory reads
+
+`pci.mem.read bdf=BB.DD.F bar=N offset=H len=N` reads bytes from a
+memory-space BAR discovered through `pci.bars`. It has the same
+BAR-relative shape as `pci.bar.read`: the caller names a PCI function,
+chooses a BAR slot, and gives a small offset and length rather than a raw
+physical address.
+
+Arguments:
+
+- `bdf` - same `BB.DD.F` tuple emitted by `pci.scan`
+- `bar` - decimal BAR slot index (`0`-`5`, further capped by header type)
+- `offset` - hex byte offset from the BAR base (`0`-`ff`)
+- `len` - number of bytes to read (`1`-`16`)
+
+The response is:
+
+```
+ok bdf=BB.DD.F bar=N kind=m32|m64|mlt1 addr=HHHHHHHH offset=HHHH len=N data=HEX
+```
+
+`addr` is the effective physical address after adding `offset` to the BAR
+base. `data` is `len` bytes read through a flat `FS` descriptor cache and
+hex-encoded in order. The kernel sets up that flat `FS` cache with a small
+unreal-mode transition; normal `DS`, `ES`, and `SS` remain real-mode
+segments.
+
+If the function is absent, the response is
+`err code=unavailable detail="no such function"`. If the selected BAR is
+empty, the response is `err code=unavailable detail="BAR not present"`.
+If the BAR is I/O-space rather than memory-space, the response is
+`err code=denied detail="only memory BAR reads are supported"`. Reserved,
+malformed, or high 64-bit memory BARs are rejected; a 64-bit memory BAR is
+readable only when its high dword is zero. Out-of-range slot, offset,
+length, or effective physical address values return `out_of_range`.
