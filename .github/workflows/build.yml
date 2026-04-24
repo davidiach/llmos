@@ -47,6 +47,7 @@ jobs:
           grep -q "^< ok primitives=help,describe" /tmp/01_cold_discovery.txt
           grep -q "^< ok name=pci.scan " /tmp/01_cold_discovery.txt
           grep -q "^< ok name=pci.bar.read " /tmp/01_cold_discovery.txt
+          grep -q "^< ok name=pci.mem.read " /tmp/01_cold_discovery.txt
           grep -q "^< ok devices=00\.00\.0:" /tmp/01_cold_discovery.txt
 
           run_transcript 02_hardware_archaeology
@@ -95,6 +96,20 @@ jobs:
           grep -A1 "^> pci\.bar\.read bdf=00\.02\.0x" /tmp/06_bar_reads.txt \
             | grep -q '^< err code=bad_arg detail="usage: pci.bar.read bdf=BB\.DD\.F bar=N offset=HHHH len=N"'
 
+          run_transcript 07_mem_reads
+          # Beat 7: memory BAR reads - schema first, then successful
+          # reads from std-vga memory BARs through the flat-FS MMIO path.
+          # I/O BARs are denied, empty BARs are unavailable, and len=17
+          # stays outside the bounded read window.
+          grep -q "^< ok name=pci.mem.read " /tmp/07_mem_reads.txt
+          grep -q "^< ok bdf=00\.02\.0 bar=0 kind=m32 addr=[0-9a-f]\{8\} offset=0000 len=4 data=[0-9a-f]\{8\}" /tmp/07_mem_reads.txt
+          grep -q "^< ok bdf=00\.02\.0 bar=2 kind=m32 addr=[0-9a-f]\{8\} offset=0000 len=4 data=[0-9a-f]\{8\}" /tmp/07_mem_reads.txt
+          grep -q '^< err code=denied detail="only memory BAR reads are supported"' /tmp/07_mem_reads.txt
+          grep -q '^< err code=unavailable detail="BAR not present"' /tmp/07_mem_reads.txt
+          grep -q '^< err code=out_of_range detail="bar, offset, or len out of range"' /tmp/07_mem_reads.txt
+          grep -A1 "^> pci\.mem\.read bdf=00\.02\.0x" /tmp/07_mem_reads.txt \
+            | grep -q '^< err code=bad_arg detail="usage: pci.mem.read bdf=BB\.DD\.F bar=N offset=HHHH len=N"'
+
           # Bridge-following regression: boot QEMU with an explicit PCI bridge
           # plus an e1000 behind it. pci.scan must reach bus 01, pci.bars on
           # the bridge (header type 1) must cap at two slots, and pci.bars
@@ -106,6 +121,7 @@ jobs:
           pci.scan
           pci.bars bdf=00.04.0
           pci.bars bdf=01.02.0
+          pci.mem.read bdf=01.02.0 bar=0 offset=0 len=4
           EOF
           echo "::group::smoke: pci-bridge-follow"
           timeout 30 python3 demo/bridge.py \
@@ -130,6 +146,8 @@ jobs:
           # e1000 on bus 01 MUST decode its 32-bit MMIO BAR — proves
           # pci.bars works on any bus, not just bus 0.
           grep -q "^< ok bdf=01\.02\.0 bars=0:m32:[0-9a-f]\{8\}:n" /tmp/pci_bridge_probe.txt
+          # And pci.mem.read must be able to read that downstream MMIO BAR.
+          grep -q "^< ok bdf=01\.02\.0 bar=0 kind=m32 addr=[0-9a-f]\{8\} offset=0000 len=4 data=[0-9a-f]\{8\}" /tmp/pci_bridge_probe.txt
           echo "::endgroup::"
 
       - name: Upload image

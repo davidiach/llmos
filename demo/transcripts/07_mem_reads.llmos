@@ -1,0 +1,33 @@
+# =============================================================================
+# Beat 7: Memory BAR reads - crossing the real-mode wall
+#
+# Task handed to the model: "Read bytes from a memory-mapped device window."
+#
+# Beat 6 read an I/O BAR. This beat uses the sibling primitive for memory
+# BARs. The protocol is still BAR-relative, but the kernel reaches high MMIO
+# addresses through a flat FS descriptor cache set up with unreal mode.
+# =============================================================================
+
+# Rediscover the display device and its memory BARs.
+pci.scan
+describe pci.mem.read
+pci.bars bdf=00.02.0
+
+# std-vga BAR0 is the framebuffer window. Read the first four bytes.
+pci.mem.read bdf=00.02.0 bar=0 offset=0 len=4
+
+# BAR2 is a non-prefetchable MMIO register window. Read four bytes from it
+# too; the record shape is identical, but the BAR kind remains memory.
+pci.mem.read bdf=00.02.0 bar=2 offset=0 len=4
+
+# I/O BARs are denied here. Beat 6 owns that side of the split.
+pci.mem.read bdf=00.01.1 bar=4 offset=0 len=1
+
+# Empty BARs are absence, not denial.
+pci.mem.read bdf=00.01.1 bar=0 offset=0 len=1
+
+# Keep MMIO reads bounded.
+pci.mem.read bdf=00.02.0 bar=0 offset=0 len=17
+
+# Malformed BDFs still fail before config-space probing.
+pci.mem.read bdf=00.02.0x bar=0 offset=0 len=1

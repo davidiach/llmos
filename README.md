@@ -24,9 +24,9 @@ The model bootstraps its understanding of the machine from the inside —
 it composes.
 
 ```
-# llmos v0.1 proto=1 primitives=12
+# llmos v0.1 proto=1 primitives=13
 > help
-< ok primitives=help,describe,cpu.vendor,cpu.features,mem.query,mem.read,rtc.now,ticks.since_boot,io.in,pci.scan,pci.bars,pci.bar.read
+< ok primitives=help,describe,cpu.vendor,cpu.features,mem.query,mem.read,rtc.now,ticks.since_boot,io.in,pci.scan,pci.bars,pci.bar.read,pci.mem.read
 > cpu.vendor
 < ok vendor=GenuineIntel family=6 model=6 stepping=3
 > mem.read addr=7c00 len=16
@@ -81,6 +81,7 @@ See `docs/PROTOCOL.md` for the full wire spec.
 | `pci.scan`         | none                        | `devices=B.D.F:VVVV:DDDD:CC[,...]` (bus 0 + bridges) |
 | `pci.bars`         | `bdf=BB.DD.F`               | `bdf=BB.DD.F bars=I:KIND[:BASE[:p\|n]],...`     |
 | `pci.bar.read`     | `bdf=BB.DD.F bar=N offset=H len=N(1-16)` | `bdf=BB.DD.F bar=N kind=io port=H offset=H len=N data=HEX` |
+| `pci.mem.read`     | `bdf=BB.DD.F bar=N offset=H len=N(1-16)` | `bdf=BB.DD.F bar=N kind=m32\|m64\|mlt1 addr=H offset=H len=N data=HEX` |
 
 `io.in`'s allowlist is introspectable: `describe io.in` includes the full
 list. At the moment it covers the PIC (0x20, 0x21), PIT (0x40, 0x43),
@@ -115,6 +116,12 @@ and a byte count (`1`-`16`). In v0.1 it reads only I/O-space BARs using
 `err code=denied`. That keeps the primitive useful for devices like the
 PIIX3 IDE bus-master window while avoiding arbitrary port reads and high
 MMIO addresses that real mode cannot directly dereference.
+
+`pci.mem.read` is the memory-space sibling. It uses a flat `FS` segment
+cache (set up through a tiny unreal-mode transition) to read small byte
+ranges from memory BARs whose physical base fits in 32 bits. I/O BARs
+return `err code=denied`, empty BARs return `unavailable`, and 64-bit
+BARs with a non-zero high dword are rejected as out of range.
 
 ## Running it
 
@@ -151,7 +158,7 @@ Empty line to quit.
 python3 demo/bridge.py script demo/transcripts/01_cold_discovery.llmos
 ```
 
-The repo ships with six transcripts — the six demo beats described
+The repo ships with seven transcripts — the seven demo beats described
 below.
 
 ### Let Claude drive
@@ -165,7 +172,7 @@ The bridge hands Claude the boot banner and a tight system prompt, then
 lets it issue one command per turn. It runs until Claude emits `DONE` or
 the step limit is hit (default 20).
 
-## The demo, in six beats
+## The demo, in seven beats
 
 **Beat 1 — Cold discovery.** Claude is told nothing about llmos except that
 `help` exists. It walks the introspection graph — `help`, then `describe`
@@ -227,18 +234,28 @@ window, still through a constrained primitive.
 
 Transcript: `demo/transcripts/06_bar_reads.llmos`.
 
-Recorded outputs for all six live in `demo/recordings/`.
+**Beat 7 - Memory BAR reads.** Task: *read bytes from a memory-mapped
+device window*. Claude uses `pci.mem.read` against the std-vga framebuffer
+BAR discovered in beat 5. The implementation keeps the protocol shape
+BAR-relative, but crosses the real-mode 64 KB wall by giving `FS` a flat
+descriptor cache and using it only for the bounded read. I/O BARs still
+deny on this primitive, preserving the split between port and memory
+spaces.
+
+Transcript: `demo/transcripts/07_mem_reads.llmos`.
+
+Recorded outputs for all seven live in `demo/recordings/`.
 
 ## Layout
 
 ```
 src/
   boot.asm          512 B — reset-and-retry MBR
-  kernel.asm        ~6 KB — protocol loop, twelve primitives, VGA mirror
+  kernel.asm        ~7 KB — protocol loop, thirteen primitives, VGA mirror
 Makefile            nasm, size-asserted
 demo/
   bridge.py         repl / script / ai modes over QEMU -serial stdio
-  transcripts/*.llmos  the six demo beats, as replayable scripts
+  transcripts/*.llmos  the seven demo beats, as replayable scripts
   recordings/*.txt  captured outputs of each transcript
 docs/
   PROTOCOL.md       wire spec
@@ -263,9 +280,10 @@ docs/
   segment-switching primitive yet.
 - `io.out` is deliberately absent in v0.1 — the allowlist for writes wants
   more design thought than reads.
-- `pci.bar.read` reaches only I/O-space BARs, with small bounded reads.
-  Memory BARs still need a protected-mode/unreal-mode access strategy or
-  a carefully designed `mmio.read` policy before they can be read safely.
+- `pci.bar.read` and `pci.mem.read` both use small bounded reads.
+  `pci.mem.read` reaches only memory BARs whose base fits in 32-bit
+  physical address space; it does not handle high 64-bit BARs, writes,
+  interrupts, DMA, or device-specific ordering rules.
 - No crypto, no storage, no networking, no interrupts of our own. Every
   non-trivial hardware interaction rides on the BIOS.
 - The kernel is tiny on purpose. "Add a feature" almost always means "add
