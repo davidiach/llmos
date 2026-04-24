@@ -77,7 +77,7 @@ Error codes in v1:
 On reset, the kernel sets up serial and emits:
 
 ```
-# llmos v0.1 proto=1 primitives=10
+# llmos v0.1 proto=1 primitives=11
 ```
 
 A bridge MUST wait for a line whose first character is `#` before sending
@@ -133,3 +133,48 @@ Fields, all lowercase hex, fixed-width:
 Multi-function devices are detected via bit 7 of the header-type byte
 (config offset 0x0E); single-function devices report only function 0.
 An empty scan yields `ok devices=` with no records.
+
+## BAR decoding
+
+`pci.bars bdf=BB.DD.F` decodes the Base Address Registers of a single
+function. The `BB.DD.F` tuple matches the record shape `pci.scan` emits.
+The number of BAR slots depends on the header type at config offset 0x0E:
+
+| Header type | Slots | Config offsets       |
+| ----------- | ----- | -------------------- |
+| `0x00`      | 6     | 0x10, 0x14, …, 0x24  |
+| `0x01`      | 2     | 0x10, 0x14           |
+| other       | 0     | —                    |
+
+The response is:
+
+```
+ok bdf=BB.DD.F bars=I:KIND[:BASE[:p|n]][,I:KIND[:BASE[:p|n]] ...]
+```
+
+One record per slot, comma-separated, in ascending slot order. `KIND`
+names the encoding in the low three bits of the raw BAR dword:
+
+| Record form              | Raw encoding                                 |
+| ------------------------ | -------------------------------------------- |
+| `I:none`                 | raw dword is zero — slot is unused           |
+| `I:io:BASE32`            | bit 0 = 1 — I/O space BAR                    |
+| `I:m32:BASE32:p\|n`      | bit 0 = 0, type bits [2:1] = 00 — 32-bit mem |
+| `I:m64:BASE64:p\|n`      | bit 0 = 0, type bits [2:1] = 10 — 64-bit mem |
+| `I:m64trunc:BASE32:p\|n` | 64-bit BAR declared on the last slot         |
+| `I:mlt1:BASE32:p\|n`     | bit 0 = 0, type bits [2:1] = 01 — legacy     |
+| `I:rsv:BASE32:p\|n`      | bit 0 = 0, type bits [2:1] = 11 — reserved   |
+
+`BASE32` is eight lowercase hex digits. `BASE64` is sixteen lowercase
+hex digits (high dword first, then low dword). `p` marks the memory
+BAR as prefetchable (bit 3 of the low dword set), `n` as non-
+prefetchable. A 64-bit memory BAR consumes the next slot as its high
+dword; the consumed slot is skipped in the list (the indices are
+non-contiguous). `m64trunc` is emitted only for a self-contradictory
+device that declares a 64-bit BAR on the last available slot (no room
+for the high dword); only the low 32 bits of the base are reported.
+
+An unpopulated function (vendor id reads as `ffff`) yields
+`err code=unavailable detail="no such function"`. A malformed `bdf`
+argument, including trailing junk after the function digit, yields
+`err code=bad_arg`.

@@ -24,6 +24,7 @@
 ;     ticks.since_boot         BIOS ticks since boot, in ms
 ;     io.in port=H             8-bit port read (allowlisted)
 ;     pci.scan                 enumerate PCI bus 0 via config ports
+;     pci.bars bdf=BB.DD.F     decode a function's BARs (I/O, mmio32, mmio64)
 ; =============================================================================
 
 [BITS 16]
@@ -127,6 +128,7 @@ cmd_table:
     dw  cmd_ticks,      h_ticks
     dw  cmd_io_in,      h_io_in
     dw  cmd_pci_scan,   h_pci_scan
+    dw  cmd_pci_bars,   h_pci_bars
     dw  0
 
 ; =============================================================================
@@ -647,6 +649,270 @@ pci_config_read_dword:
     pop     ebx
     ret
 
+; ---- pci.bars bdf=BB.DD.F -------------------------------------------------
+;   Decode the Base Address Registers of a single PCI function. Type 0 headers
+;   carry six BARs (config offsets 0x10..0x24); type 1 (PCI-to-PCI bridge)
+;   headers carry two (0x10..0x14); other header types have none and the
+;   response emits `bars=` with no records.
+;
+;   Each populated slot becomes one comma-separated record. The low bits of
+;   the raw dword encode the kind:
+;     bit 0   = 1 -> I/O BAR       record: `N:io:HHHHHHHH`
+;     bit 0   = 0 -> memory BAR
+;       bits[2:1] = 00 (32-bit)    record: `N:m32:HHHHHHHH:p|n`
+;       bits[2:1] = 10 (64-bit)    record: `N:m64:HHHHHHHHHHHHHHHH:p|n`
+;                                  (consumes the next slot, which is skipped)
+;       bits[2:1] = 01 (<1 MB)     record: `N:mlt1:HHHHHHHH:p|n`
+;       bits[2:1] = 11 (reserved)  record: `N:rsv:HHHHHHHH:p|n`
+;     `p` or `n` is the prefetch bit (bit 3) of the low dword.
+;     An unused slot (raw == 0) is reported as `N:none`.
+;     A 64-bit BAR declared on the last available slot (so there is no room
+;     for the high dword) is reported as `N:m64trunc:HHHHHHHH:p|n` — only
+;     the low 32 bits are reported, and the device is self-contradictory.
+;
+;   An unpopulated function yields `err code=unavailable detail="no such
+;   function"`. A malformed BDF yields `bad_arg`.
+h_pci_bars:
+    mov     si, [arg_ptr]
+    test    si, si
+    jz      .usage
+    mov     di, key_bdf
+    call    find_kv
+    jc      .usage
+    call    parse_bdf
+    jc      .usage
+
+    ; Probe presence via vendor id at config offset 0x00.
+    xor     al, al
+    call    pci_config_read_dword
+    cmp     ax, 0xFFFF
+    je      .absent
+
+    ; Header type (config 0x0E) -> number of BAR slots.
+    mov     al, 0x0C
+    call    pci_config_read_dword
+    shr     eax, 16
+    and     al, 0x7F
+    mov     cl, 6                   ; default: 6 slots (header type 0x00)
+    cmp     al, 0x00
+    je      .got_nbars
+    mov     cl, 2                   ; PCI-to-PCI bridge: 2 slots
+    cmp     al, 0x01
+    je      .got_nbars
+    xor     cl, cl                  ; other header types: no BARs
+.got_nbars:
+    mov     [pci_nbars], cl
+
+    ; "ok bdf=BB.DD.F bars="
+    mov     si, resp_ok_prefix
+    call    serial_puts_only
+    mov     si, resp_bdf_kw
+    call    serial_puts_only
+    mov     al, [pci_bus]
+    call    serial_put_hex_byte
+    mov     al, '.'
+    call    serial_putc
+    mov     al, [pci_dev]
+    call    serial_put_hex_byte
+    mov     al, '.'
+    call    serial_putc
+    mov     al, [pci_fn]
+    and     al, 0x07
+    add     al, '0'
+    call    serial_putc
+    mov     si, resp_bars_kw
+    call    serial_puts_only
+
+    mov     byte [pci_first], 1
+    xor     bl, bl                  ; BL = current BAR index
+.bar_loop:
+    cmp     bl, [pci_nbars]
+    jae     .done
+
+    ; Separator: comma before every record except the first.
+    cmp     byte [pci_first], 1
+    jne     .comma
+    mov     byte [pci_first], 0
+    jmp     .emit
+.comma:
+    mov     al, ','
+    call    serial_putc
+.emit:
+    mov     al, bl
+    add     al, '0'
+    call    serial_putc
+    mov     al, ':'
+    call    serial_putc
+
+    ; Read BAR at offset 0x10 + 4*BL.
+    mov     al, bl
+    shl     al, 2
+    add     al, 0x10
+    call    pci_config_read_dword
+    mov     [pci_bar_lo], eax
+
+    test    eax, eax
+    jnz     .populated
+    mov     si, str_none
+    call    serial_puts_only
+    inc     bl
+    jmp     .bar_loop
+.populated:
+    test    al, 0x01
+    jz      .mem
+
+    ; ---- I/O BAR -------------------------------------------------------
+    and     eax, 0xFFFFFFFC
+    mov     si, str_io
+    call    serial_puts_only
+    call    serial_put_hex_dword
+    inc     bl
+    jmp     .bar_loop
+
+.mem:
+    ; Decode type (bits 2:1) and prefetch (bit 3) from the low byte.
+    mov     dl, al
+    mov     dh, dl
+    shr     dh, 3
+    and     dh, 0x01
+    mov     [pci_pref], dh
+    and     dl, 0x06
+    shr     dl, 1                   ; DL = memory type (0,1,2,3)
+
+    cmp     dl, 2
+    je      .m64
+    cmp     dl, 1
+    je      .mlt1
+    cmp     dl, 3
+    je      .rsv
+
+    ; 32-bit memory BAR.
+    mov     eax, [pci_bar_lo]
+    and     eax, 0xFFFFFFF0
+    mov     si, str_m32
+    call    serial_puts_only
+    call    serial_put_hex_dword
+    call    emit_pref_suffix
+    inc     bl
+    jmp     .bar_loop
+
+.m64:
+    ; 64-bit memory BAR — reads the high dword from slot BL+1.
+    mov     al, bl
+    inc     al
+    cmp     al, [pci_nbars]
+    jae     .m64_truncated          ; malformed: no room for the high slot
+    shl     al, 2
+    add     al, 0x10
+    call    pci_config_read_dword
+    mov     [pci_bar_hi], eax
+    mov     si, str_m64
+    call    serial_puts_only
+    mov     eax, [pci_bar_hi]
+    call    serial_put_hex_dword
+    mov     eax, [pci_bar_lo]
+    and     eax, 0xFFFFFFF0
+    call    serial_put_hex_dword
+    call    emit_pref_suffix
+    add     bl, 2                   ; consumed two slots
+    jmp     .bar_loop
+
+.m64_truncated:
+    ; Self-contradictory device: BAR claims 64-bit but there's no room for
+    ; the high dword. Emit a distinct token so the model can tell this
+    ; apart from a well-formed 32-bit BAR.
+    mov     eax, [pci_bar_lo]
+    and     eax, 0xFFFFFFF0
+    mov     si, str_m64trunc
+    call    serial_puts_only
+    call    serial_put_hex_dword
+    call    emit_pref_suffix
+    inc     bl
+    jmp     .bar_loop
+
+.mlt1:
+    mov     eax, [pci_bar_lo]
+    and     eax, 0xFFFFFFF0
+    mov     si, str_mlt1
+    call    serial_puts_only
+    call    serial_put_hex_dword
+    call    emit_pref_suffix
+    inc     bl
+    jmp     .bar_loop
+
+.rsv:
+    mov     eax, [pci_bar_lo]
+    and     eax, 0xFFFFFFF0
+    mov     si, str_rsv
+    call    serial_puts_only
+    call    serial_put_hex_dword
+    call    emit_pref_suffix
+    inc     bl
+    jmp     .bar_loop
+
+.done:
+    call    respond_end
+    ret
+.absent:
+    mov     si, err_pci_absent
+    call    respond
+    ret
+.usage:
+    mov     si, err_pci_bars_usage
+    call    respond
+    ret
+
+; emit_pref_suffix: appends ":p" (prefetchable) or ":n" using [pci_pref].
+emit_pref_suffix:
+    mov     al, ':'
+    call    serial_putc
+    mov     al, 'n'
+    cmp     byte [pci_pref], 0
+    je      .out
+    mov     al, 'p'
+.out:
+    call    serial_putc
+    ret
+
+; parse_bdf: DS:SI -> "BB.DD.F" where BB and DD are 1-4 hex digits (bounded
+; by bus<=0xFF, device<=0x1F) and F is a single decimal digit 0..7 followed
+; by end-of-string or an argument separator. Writes pci_bus/pci_dev/pci_fn.
+; CF=0 on success.
+parse_bdf:
+    call    parse_hex_word
+    jc      .bad
+    cmp     ax, 0x00FF
+    ja      .bad
+    mov     [pci_bus], al
+    cmp     byte [si], '.'
+    jne     .bad
+    inc     si
+    call    parse_hex_word
+    jc      .bad
+    cmp     ax, 0x001F
+    ja      .bad
+    mov     [pci_dev], al
+    cmp     byte [si], '.'
+    jne     .bad
+    inc     si
+    mov     al, [si]
+    sub     al, '0'
+    cmp     al, 7
+    ja      .bad
+    mov     [pci_fn], al
+    inc     si
+    mov     al, [si]
+    test    al, al
+    jz      .ok
+    cmp     al, ' '
+    jne     .bad
+.ok:
+    clc
+    ret
+.bad:
+    stc
+    ret
+
 ; =============================================================================
 ; Protocol helpers
 ; =============================================================================
@@ -952,6 +1218,15 @@ serial_put_hex_word:
     call    serial_put_hex_byte
     ret
 
+; serial_put_hex_dword: EAX = dword, emit 8 lowercase hex digits (MSB first).
+serial_put_hex_dword:
+    push    eax
+    shr     eax, 16
+    call    serial_put_hex_word
+    pop     eax
+    call    serial_put_hex_word
+    ret
+
 ; serial_put_bcd: AL = BCD byte, emit as two decimal digits.
 serial_put_bcd:
     push    ax
@@ -1181,7 +1456,7 @@ vga_banner:
     db '|  COM1 115200 8N1 - LLM driven   |', 13, 10
     db '+---------------------------------+', 13, 10, 13, 10, 0
 
-ready_msg:      db '# llmos v0.1 proto=1 primitives=10', 13, 10, 0
+ready_msg:      db '# llmos v0.1 proto=1 primitives=11', 13, 10, 0
 
 ; Command names (NUL-terminated)
 cmd_help:       db 'help', 0
@@ -1194,11 +1469,13 @@ cmd_rtc_now:    db 'rtc.now', 0
 cmd_ticks:      db 'ticks.since_boot', 0
 cmd_io_in:      db 'io.in', 0
 cmd_pci_scan:   db 'pci.scan', 0
+cmd_pci_bars:   db 'pci.bars', 0
 
 ; Argument key strings
 key_addr:       db 'addr', 0
 key_len:        db 'len', 0
 key_port:       db 'port', 0
+key_bdf:        db 'bdf', 0
 
 ; Response line fragments (all include trailing space where appropriate)
 resp_ok_prefix:     db 'ok', 0
@@ -1218,6 +1495,18 @@ resp_ms_kw:         db ' ms=', 0
 resp_port_kw:       db ' port=', 0
 resp_value_kw:      db ' value=', 0
 resp_devices_kw:    db ' devices=', 0
+resp_bdf_kw:        db ' bdf=', 0
+resp_bars_kw:       db ' bars=', 0
+
+; pci.bars record-kind prefixes (each includes the trailing ':' separator so
+; the base-address hex can be appended directly).
+str_none:           db 'none', 0
+str_io:             db 'io:', 0
+str_m32:            db 'm32:', 0
+str_m64:            db 'm64:', 0
+str_m64trunc:       db 'm64trunc:', 0
+str_mlt1:           db 'mlt1:', 0
+str_rsv:            db 'rsv:', 0
 
 ; Error responses (full lines, including newline)
 err_unknown_cmd:
@@ -1236,10 +1525,14 @@ err_io_denied:
     db 'err code=denied detail="port not in allowlist"', 0
 err_io_usage:
     db 'err code=bad_arg detail="usage: io.in port=HH"', 0
+err_pci_bars_usage:
+    db 'err code=bad_arg detail="usage: pci.bars bdf=BB.DD.F"', 0
+err_pci_absent:
+    db 'err code=unavailable detail="no such function"', 0
 
 ; Help response (full line).
 help_response:
-    db 'ok primitives=help,describe,cpu.vendor,cpu.features,mem.query,mem.read,rtc.now,ticks.since_boot,io.in,pci.scan', 0
+    db 'ok primitives=help,describe,cpu.vendor,cpu.features,mem.query,mem.read,rtc.now,ticks.since_boot,io.in,pci.scan,pci.bars', 0
 
 ; Schema table: (name_ptr, schema_line_ptr). NULL-terminated.
 schema_table:
@@ -1253,6 +1546,7 @@ schema_table:
     dw  cmd_ticks,      sch_ticks
     dw  cmd_io_in,      sch_io_in
     dw  cmd_pci_scan,   sch_pci_scan
+    dw  cmd_pci_bars,   sch_pci_bars
     dw  0
 
 sch_help:       db 'ok name=help args=none returns=primitives=CSV', 0
@@ -1265,6 +1559,7 @@ sch_rtc_now:    db 'ok name=rtc.now args=none returns="iso=YYYY-MM-DDTHH:MM:SS"'
 sch_ticks:      db 'ok name=ticks.since_boot args=none returns="ms=N"', 0
 sch_io_in:      db 'ok name=io.in args="port=H" returns="port=H value=H" allowlist=0x20,0x21,0x40,0x43,0x60,0x61,0x64,0x70,0x71', 0
 sch_pci_scan:   db 'ok name=pci.scan args=none returns="devices=B.D.F:VVVV:DDDD:CC[,...]" scope="bus 0 + any PCI-to-PCI bridges reachable from it; class = base class byte"', 0
+sch_pci_bars:   db 'ok name=pci.bars args="bdf=BB.DD.F" returns="bdf=BB.DD.F bars=I:KIND[:BASE[:p|n]],..." kinds="none|io:BASE32|m32:BASE32:p|n|m64:BASE64:p|n|m64trunc:BASE32:p|n|mlt1:BASE32:p|n|rsv:BASE32:p|n" slots="6 for header-type 0, 2 for header-type 1, else 0" notes="m64 consumes I+1; m64trunc flags a self-contradictory 64-bit BAR on the last slot; bdf format matches pci.scan"', 0
 
 ; io.in allowlist (terminator 0xFFFF)
 io_allowlist:
@@ -1365,4 +1660,8 @@ pci_class:      db 0
 pci_hdr:        db 0
 pci_ids:        dd 0
 pci_bus_todo:   times 32 db 0      ; 256-bit bitmap of buses still to scan
+pci_nbars:      db 0
+pci_pref:       db 0
+pci_bar_lo:     dd 0
+pci_bar_hi:     dd 0
 
