@@ -24,9 +24,9 @@ The model bootstraps its understanding of the machine from the inside —
 it composes.
 
 ```
-# llmos v0.1 proto=1 primitives=11
+# llmos v0.1 proto=1 primitives=12
 > help
-< ok primitives=help,describe,cpu.vendor,cpu.features,mem.query,mem.read,rtc.now,ticks.since_boot,io.in,pci.scan,pci.bars
+< ok primitives=help,describe,cpu.vendor,cpu.features,mem.query,mem.read,rtc.now,ticks.since_boot,io.in,pci.scan,pci.bars,pci.bar.read
 > cpu.vendor
 < ok vendor=GenuineIntel family=6 model=6 stepping=3
 > mem.read addr=7c00 len=16
@@ -80,6 +80,7 @@ See `docs/PROTOCOL.md` for the full wire spec.
 | `io.in`            | `port=H`                    | `port=H value=H` or `err code=denied`           |
 | `pci.scan`         | none                        | `devices=B.D.F:VVVV:DDDD:CC[,...]` (bus 0 + bridges) |
 | `pci.bars`         | `bdf=BB.DD.F`               | `bdf=BB.DD.F bars=I:KIND[:BASE[:p\|n]],...`     |
+| `pci.bar.read`     | `bdf=BB.DD.F bar=N offset=H len=N(1-16)` | `bdf=BB.DD.F bar=N kind=io port=H offset=H len=N data=HEX` |
 
 `io.in`'s allowlist is introspectable: `describe io.in` includes the full
 list. At the moment it covers the PIC (0x20, 0x21), PIT (0x40, 0x43),
@@ -106,6 +107,14 @@ headers report six slots; type-1 (PCI-to-PCI bridge) headers report two;
 other header types return an empty `bars=`. An unpopulated function
 yields `err code=unavailable`; a malformed BDF, including trailing junk
 after the function digit, yields `err code=bad_arg`.
+
+`pci.bar.read` is the first BAR-bound register read primitive. It takes the
+same `BB.DD.F` tuple, a BAR slot number, a small offset (`0x00`-`0xff`),
+and a byte count (`1`-`16`). In v0.1 it reads only I/O-space BARs using
+8-bit port reads and returns the bytes as `data=HEX`; memory BARs return
+`err code=denied`. That keeps the primitive useful for devices like the
+PIIX3 IDE bus-master window while avoiding arbitrary port reads and high
+MMIO addresses that real mode cannot directly dereference.
 
 ## Running it
 
@@ -142,7 +151,7 @@ Empty line to quit.
 python3 demo/bridge.py script demo/transcripts/01_cold_discovery.llmos
 ```
 
-The repo ships with five transcripts — the five demo beats described
+The repo ships with six transcripts — the six demo beats described
 below.
 
 ### Let Claude drive
@@ -156,7 +165,7 @@ The bridge hands Claude the boot banner and a tight system prompt, then
 lets it issue one command per turn. It runs until Claude emits `DONE` or
 the step limit is hit (default 20).
 
-## The demo, in five beats
+## The demo, in six beats
 
 **Beat 1 — Cold discovery.** Claude is told nothing about llmos except that
 `help` exists. It walks the introspection graph — `help`, then `describe`
@@ -203,24 +212,33 @@ prefetchable — that's how the CPU knows speculative reads are safe),
 distinguishes it from the MMIO-register BAR on the same card (non-
 prefetchable — side effects), and finds the bus-master IDE I/O window on
 the PIIX3 controller whose legacy command ports beat 3 couldn't touch.
-Two views of the same hardware, now fully named. The BARs it reads here
-are the addresses a future primitive like `mmio.read` would need to
-speak to each device directly.
+Two views of the same hardware, now fully named. The I/O BARs it reads
+here are the addresses `pci.bar.read` can use to touch device registers.
 
 Transcript: `demo/transcripts/05_bar_windows.llmos`.
 
-Recorded outputs for all five live in `demo/recordings/`.
+**Beat 6 - BAR reads.** Task: *read a register window through a BAR*.
+Claude asks for `pci.bar.read`, confirms that BAR reads are BDF- and
+slot-relative, and reads a few bytes from the PIIX3 IDE bus-master I/O
+window discovered in beat 5. It also tries a memory BAR and an empty BAR,
+getting `denied` and `unavailable` instead of ambiguous failure. The OS
+has crossed from naming hardware to reading a device-owned register
+window, still through a constrained primitive.
+
+Transcript: `demo/transcripts/06_bar_reads.llmos`.
+
+Recorded outputs for all six live in `demo/recordings/`.
 
 ## Layout
 
 ```
 src/
   boot.asm          512 B — reset-and-retry MBR
-  kernel.asm        ~3.9 KB — protocol loop, ten primitives, VGA mirror
+  kernel.asm        ~6 KB — protocol loop, twelve primitives, VGA mirror
 Makefile            nasm, size-asserted
 demo/
   bridge.py         repl / script / ai modes over QEMU -serial stdio
-  transcripts/*.llmos  the four demo beats, as replayable scripts
+  transcripts/*.llmos  the six demo beats, as replayable scripts
   recordings/*.txt  captured outputs of each transcript
 docs/
   PROTOCOL.md       wire spec
@@ -245,10 +263,9 @@ docs/
   segment-switching primitive yet.
 - `io.out` is deliberately absent in v0.1 — the allowlist for writes wants
   more design thought than reads.
-- `pci.scan` and `pci.bars` together expose the device graph and each
-  function's address windows, but there is no primitive yet to *read*
-  those windows. Reaching a BAR's MMIO registers (some `mmio.read`
-  primitive, subject to its own allowlist) would be the next step.
+- `pci.bar.read` reaches only I/O-space BARs, with small bounded reads.
+  Memory BARs still need a protected-mode/unreal-mode access strategy or
+  a carefully designed `mmio.read` policy before they can be read safely.
 - No crypto, no storage, no networking, no interrupts of our own. Every
   non-trivial hardware interaction rides on the BIOS.
 - The kernel is tiny on purpose. "Add a feature" almost always means "add

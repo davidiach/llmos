@@ -25,6 +25,7 @@
 ;     io.in port=H             8-bit port read (allowlisted)
 ;     pci.scan                 enumerate PCI bus 0 via config ports
 ;     pci.bars bdf=BB.DD.F     decode a function's BARs (I/O, mmio32, mmio64)
+;     pci.bar.read ...         read bytes from an I/O-space BAR
 ; =============================================================================
 
 [BITS 16]
@@ -129,6 +130,7 @@ cmd_table:
     dw  cmd_io_in,      h_io_in
     dw  cmd_pci_scan,   h_pci_scan
     dw  cmd_pci_bars,   h_pci_bars
+    dw  cmd_pci_bar_read, h_pci_bar_read
     dw  0
 
 ; =============================================================================
@@ -862,6 +864,178 @@ h_pci_bars:
     call    respond
     ret
 
+; ---- pci.bar.read bdf=BB.DD.F bar=N offset=H len=N ------------------------
+;   Read up to 16 bytes from an I/O-space BAR. The address is intentionally
+;   BAR-relative rather than arbitrary: the caller must first identify a PCI
+;   function, choose one of its declared BAR slots, and stay near the BAR base
+;   (offset <= ff, len <= 16) inside 16-bit I/O port space. Memory BARs are
+;   denied in this first version; most QEMU MMIO windows live above real mode's
+;   direct addressable range anyway.
+;
+;   Response:
+;     ok bdf=BB.DD.F bar=N kind=io port=HHHH offset=HHHH len=N data=HEX
+h_pci_bar_read:
+    mov     si, [arg_ptr]
+    test    si, si
+    jz      .usage
+    mov     di, key_bdf
+    call    find_kv
+    jc      .usage
+    call    parse_bdf
+    jc      .usage
+
+    mov     si, [arg_ptr]
+    mov     di, key_bar
+    call    find_kv_dec
+    jc      .usage
+    cmp     ax, 5
+    ja      .range
+    mov     [pci_bar_idx], al
+
+    mov     si, [arg_ptr]
+    mov     di, key_offset
+    call    find_kv_hex
+    jc      .usage
+    cmp     ax, 0x00FF
+    ja      .range
+    mov     [pci_bar_offset], ax
+
+    mov     si, [arg_ptr]
+    mov     di, key_len
+    call    find_kv_dec
+    jc      .usage
+    test    ax, ax
+    jz      .range
+    cmp     ax, 16
+    ja      .range
+    mov     [pci_bar_len], ax
+
+    ; Probe presence via vendor id at config offset 0x00.
+    xor     al, al
+    call    pci_config_read_dword
+    cmp     ax, 0xFFFF
+    je      .absent
+
+    ; Header type (config 0x0E) -> number of BAR slots.
+    mov     al, 0x0C
+    call    pci_config_read_dword
+    shr     eax, 16
+    and     al, 0x7F
+    mov     cl, 6                   ; default: 6 slots (header type 0x00)
+    cmp     al, 0x00
+    je      .got_nbars
+    mov     cl, 2                   ; PCI-to-PCI bridge: 2 slots
+    cmp     al, 0x01
+    je      .got_nbars
+    xor     cl, cl                  ; other header types: no BARs
+.got_nbars:
+    mov     [pci_nbars], cl
+    mov     al, [pci_bar_idx]
+    cmp     al, [pci_nbars]
+    jae     .range
+
+    ; Read BAR at offset 0x10 + 4*bar.
+    mov     al, [pci_bar_idx]
+    shl     al, 2
+    add     al, 0x10
+    call    pci_config_read_dword
+    mov     [pci_bar_lo], eax
+    test    eax, eax
+    jz      .bar_absent
+    test    al, 0x01
+    jz      .not_io
+
+    ; I/O BAR: low two bits are flags, the rest is the base port. The CPU's
+    ; IN instruction addresses 16-bit port space, so reject any base/offset
+    ; combination that does not fit.
+    and     eax, 0xFFFFFFFC
+    cmp     eax, 0x0000FFFF
+    ja      .port_range
+    mov     bx, ax
+    add     bx, [pci_bar_offset]
+    jc      .port_range
+    mov     ax, [pci_bar_len]
+    dec     ax
+    add     ax, bx
+    jc      .port_range
+    mov     [pci_bar_port], bx
+
+    ; "ok bdf=BB.DD.F bar=N kind=io port=HHHH offset=HHHH len=N data=..."
+    mov     si, resp_ok_prefix
+    call    serial_puts_only
+    mov     si, resp_bdf_kw
+    call    serial_puts_only
+    call    emit_pci_bdf
+    mov     si, resp_bar_kw
+    call    serial_puts_only
+    xor     ah, ah
+    mov     al, [pci_bar_idx]
+    call    serial_put_udec
+    mov     si, resp_kind_io_kw
+    call    serial_puts_only
+    mov     si, resp_port_kw
+    call    serial_puts_only
+    mov     ax, [pci_bar_port]
+    call    serial_put_hex_word
+    mov     si, resp_offset_kw
+    call    serial_puts_only
+    mov     ax, [pci_bar_offset]
+    call    serial_put_hex_word
+    mov     si, resp_len_kw
+    call    serial_puts_only
+    mov     ax, [pci_bar_len]
+    call    serial_put_udec
+    mov     si, resp_data_kw
+    call    serial_puts_only
+    mov     cx, [pci_bar_len]
+    mov     dx, [pci_bar_port]
+.dump:
+    in      al, dx
+    call    serial_put_hex_byte
+    inc     dx
+    loop    .dump
+    call    respond_end
+    ret
+.absent:
+    mov     si, err_pci_absent
+    call    respond
+    ret
+.bar_absent:
+    mov     si, err_pci_bar_absent
+    call    respond
+    ret
+.not_io:
+    mov     si, err_pci_bar_non_io
+    call    respond
+    ret
+.port_range:
+    mov     si, err_pci_bar_port_range
+    call    respond
+    ret
+.range:
+    mov     si, err_pci_bar_range
+    call    respond
+    ret
+.usage:
+    mov     si, err_pci_bar_read_usage
+    call    respond
+    ret
+
+emit_pci_bdf:
+    mov     al, [pci_bus]
+    call    serial_put_hex_byte
+    mov     al, '.'
+    call    serial_putc
+    mov     al, [pci_dev]
+    call    serial_put_hex_byte
+    mov     al, '.'
+    call    serial_putc
+    mov     al, [pci_fn]
+    and     al, 0x07
+    add     al, '0'
+    call    serial_putc
+    ret
+
 ; emit_pref_suffix: appends ":p" (prefetchable) or ":n" using [pci_pref].
 emit_pref_suffix:
     mov     al, ':'
@@ -1456,7 +1630,7 @@ vga_banner:
     db '|  COM1 115200 8N1 - LLM driven   |', 13, 10
     db '+---------------------------------+', 13, 10, 13, 10, 0
 
-ready_msg:      db '# llmos v0.1 proto=1 primitives=11', 13, 10, 0
+ready_msg:      db '# llmos v0.1 proto=1 primitives=12', 13, 10, 0
 
 ; Command names (NUL-terminated)
 cmd_help:       db 'help', 0
@@ -1470,12 +1644,15 @@ cmd_ticks:      db 'ticks.since_boot', 0
 cmd_io_in:      db 'io.in', 0
 cmd_pci_scan:   db 'pci.scan', 0
 cmd_pci_bars:   db 'pci.bars', 0
+cmd_pci_bar_read: db 'pci.bar.read', 0
 
 ; Argument key strings
 key_addr:       db 'addr', 0
 key_len:        db 'len', 0
 key_port:       db 'port', 0
 key_bdf:        db 'bdf', 0
+key_bar:        db 'bar', 0
+key_offset:     db 'offset', 0
 
 ; Response line fragments (all include trailing space where appropriate)
 resp_ok_prefix:     db 'ok', 0
@@ -1496,7 +1673,10 @@ resp_port_kw:       db ' port=', 0
 resp_value_kw:      db ' value=', 0
 resp_devices_kw:    db ' devices=', 0
 resp_bdf_kw:        db ' bdf=', 0
+resp_bar_kw:        db ' bar=', 0
 resp_bars_kw:       db ' bars=', 0
+resp_offset_kw:     db ' offset=', 0
+resp_kind_io_kw:    db ' kind=io', 0
 
 ; pci.bars record-kind prefixes (each includes the trailing ':' separator so
 ; the base-address hex can be appended directly).
@@ -1527,12 +1707,22 @@ err_io_usage:
     db 'err code=bad_arg detail="usage: io.in port=HH"', 0
 err_pci_bars_usage:
     db 'err code=bad_arg detail="usage: pci.bars bdf=BB.DD.F"', 0
+err_pci_bar_read_usage:
+    db 'err code=bad_arg detail="usage: pci.bar.read bdf=BB.DD.F bar=N offset=HHHH len=N"', 0
 err_pci_absent:
     db 'err code=unavailable detail="no such function"', 0
+err_pci_bar_absent:
+    db 'err code=unavailable detail="BAR not present"', 0
+err_pci_bar_non_io:
+    db 'err code=denied detail="only I/O BAR reads are supported"', 0
+err_pci_bar_range:
+    db 'err code=out_of_range detail="bar, offset, or len out of range"', 0
+err_pci_bar_port_range:
+    db 'err code=out_of_range detail="I/O port range exceeds 16-bit space"', 0
 
 ; Help response (full line).
 help_response:
-    db 'ok primitives=help,describe,cpu.vendor,cpu.features,mem.query,mem.read,rtc.now,ticks.since_boot,io.in,pci.scan,pci.bars', 0
+    db 'ok primitives=help,describe,cpu.vendor,cpu.features,mem.query,mem.read,rtc.now,ticks.since_boot,io.in,pci.scan,pci.bars,pci.bar.read', 0
 
 ; Schema table: (name_ptr, schema_line_ptr). NULL-terminated.
 schema_table:
@@ -1547,6 +1737,7 @@ schema_table:
     dw  cmd_io_in,      sch_io_in
     dw  cmd_pci_scan,   sch_pci_scan
     dw  cmd_pci_bars,   sch_pci_bars
+    dw  cmd_pci_bar_read, sch_pci_bar_read
     dw  0
 
 sch_help:       db 'ok name=help args=none returns=primitives=CSV', 0
@@ -1560,6 +1751,7 @@ sch_ticks:      db 'ok name=ticks.since_boot args=none returns="ms=N"', 0
 sch_io_in:      db 'ok name=io.in args="port=H" returns="port=H value=H" allowlist=0x20,0x21,0x40,0x43,0x60,0x61,0x64,0x70,0x71', 0
 sch_pci_scan:   db 'ok name=pci.scan args=none returns="devices=B.D.F:VVVV:DDDD:CC[,...]" scope="bus 0 + any PCI-to-PCI bridges reachable from it; class = base class byte"', 0
 sch_pci_bars:   db 'ok name=pci.bars args="bdf=BB.DD.F" returns="bdf=BB.DD.F bars=I:KIND[:BASE[:p|n]],..." kinds="none|io:BASE32|m32:BASE32:p|n|m64:BASE64:p|n|m64trunc:BASE32:p|n|mlt1:BASE32:p|n|rsv:BASE32:p|n" slots="6 for header-type 0, 2 for header-type 1, else 0" notes="m64 consumes I+1; m64trunc flags a self-contradictory 64-bit BAR on the last slot; bdf format matches pci.scan"', 0
+sch_pci_bar_read: db 'ok name=pci.bar.read args="bdf=BB.DD.F bar=N offset=H(0-ff) len=N(1-16)" returns="bdf=BB.DD.F bar=N kind=io port=H offset=H len=N data=HEX" notes="reads I/O-space BARs only; memory BARs return denied"', 0
 
 ; io.in allowlist (terminator 0xFFFF)
 io_allowlist:
@@ -1664,4 +1856,8 @@ pci_nbars:      db 0
 pci_pref:       db 0
 pci_bar_lo:     dd 0
 pci_bar_hi:     dd 0
+pci_bar_idx:    db 0
+pci_bar_offset: dw 0
+pci_bar_len:    dw 0
+pci_bar_port:   dw 0
 
