@@ -24,9 +24,9 @@ The model bootstraps its understanding of the machine from the inside —
 it composes.
 
 ```
-# llmos v0.1 proto=1 primitives=13
+# llmos v0.1 proto=1 primitives=16
 > help
-< ok primitives=help,describe,cpu.vendor,cpu.features,mem.query,mem.read,rtc.now,ticks.since_boot,io.in,pci.scan,pci.bars,pci.bar.read,pci.mem.read
+< ok primitives=help,describe,cpu.vendor,cpu.features,mem.query,mem.read,rtc.now,ticks.since_boot,io.in,pci.scan,pci.bars,pci.bar.read,pci.mem.read,pci.mem.read8,pci.mem.read16,pci.mem.read32
 > cpu.vendor
 < ok vendor=GenuineIntel family=6 model=6 stepping=3
 > mem.read addr=7c00 len=16
@@ -82,6 +82,9 @@ See `docs/PROTOCOL.md` for the full wire spec.
 | `pci.bars`         | `bdf=BB.DD.F`               | `bdf=BB.DD.F bars=I:KIND[:BASE[:p\|n]],...`     |
 | `pci.bar.read`     | `bdf=BB.DD.F bar=N offset=H len=N(1-16)` | `bdf=BB.DD.F bar=N kind=io port=H offset=H len=N data=HEX` |
 | `pci.mem.read`     | `bdf=BB.DD.F bar=N offset=H len=N(1-16)` | `bdf=BB.DD.F bar=N kind=m32\|m64\|mlt1 addr=H offset=H len=N data=HEX` |
+| `pci.mem.read8`    | `bdf=BB.DD.F bar=N offset=H` | `bdf=BB.DD.F bar=N kind=m32\|m64\|mlt1 addr=H offset=H width=8 value=HH` |
+| `pci.mem.read16`   | `bdf=BB.DD.F bar=N offset=H(aligned)` | `bdf=BB.DD.F bar=N kind=m32\|m64\|mlt1 addr=H offset=H width=16 value=HHHH` |
+| `pci.mem.read32`   | `bdf=BB.DD.F bar=N offset=H(aligned)` | `bdf=BB.DD.F bar=N kind=m32\|m64\|mlt1 addr=H offset=H width=32 value=HHHHHHHH` |
 
 `io.in`'s allowlist is introspectable: `describe io.in` includes the full
 list. At the moment it covers the PIC (0x20, 0x21), PIT (0x40, 0x43),
@@ -123,6 +126,12 @@ ranges from memory BARs whose physical base fits in 32 bits. I/O BARs
 return `err code=denied`, empty BARs return `unavailable`, and 64-bit
 BARs with a non-zero high dword are rejected as out of range.
 
+`pci.mem.read8`, `pci.mem.read16`, and `pci.mem.read32` are typed MMIO
+siblings for register probing. They keep the same `bdf`/`bar`/`offset`
+addressing discipline, but return `width=N value=HEX` so a model can work
+with little-endian register values without manually decoding byte strings.
+The 16- and 32-bit forms require natural alignment.
+
 ## Running it
 
 ### Requirements
@@ -158,7 +167,7 @@ Empty line to quit.
 python3 demo/bridge.py script demo/transcripts/01_cold_discovery.llmos
 ```
 
-The repo ships with seven transcripts — the seven demo beats described
+The repo ships with eight transcripts - the eight demo beats described
 below.
 
 ### Let Claude drive
@@ -172,7 +181,7 @@ The bridge hands Claude the boot banner and a tight system prompt, then
 lets it issue one command per turn. It runs until Claude emits `DONE` or
 the step limit is hit (default 20).
 
-## The demo, in seven beats
+## The demo, in eight beats
 
 **Beat 1 — Cold discovery.** Claude is told nothing about llmos except that
 `help` exists. It walks the introspection graph — `help`, then `describe`
@@ -244,18 +253,27 @@ spaces.
 
 Transcript: `demo/transcripts/07_mem_reads.llmos`.
 
-Recorded outputs for all seven live in `demo/recordings/`.
+**Beat 8 - Typed MMIO reads.** Task: *read a memory-mapped device
+register as a typed value*. Claude uses `pci.mem.read8`, `pci.mem.read16`,
+and `pci.mem.read32` against the std-vga MMIO register BAR. The kernel
+still controls the address shape with `bdf`, `bar`, and `offset`, but the
+response is now a decoded little-endian `value=` field instead of a byte
+string the model has to unpack by hand.
+
+Transcript: `demo/transcripts/08_typed_mem_reads.llmos`.
+
+Recorded outputs for all eight live in `demo/recordings/`.
 
 ## Layout
 
 ```
 src/
   boot.asm          512 B — reset-and-retry MBR
-  kernel.asm        ~7 KB — protocol loop, thirteen primitives, VGA mirror
+  kernel.asm        ~9 KB - protocol loop, sixteen primitives, VGA mirror
 Makefile            nasm, size-asserted
 demo/
   bridge.py         repl / script / ai modes over QEMU -serial stdio
-  transcripts/*.llmos  the seven demo beats, as replayable scripts
+  transcripts/*.llmos  the eight demo beats, as replayable scripts
   recordings/*.txt  captured outputs of each transcript
 docs/
   PROTOCOL.md       wire spec

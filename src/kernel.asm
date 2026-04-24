@@ -27,6 +27,7 @@
 ;     pci.bars bdf=BB.DD.F     decode a function's BARs (I/O, mmio32, mmio64)
 ;     pci.bar.read ...         read bytes from an I/O-space BAR
 ;     pci.mem.read ...         read bytes from a memory-space BAR
+;     pci.mem.read{8,16,32} ... read a typed value from a memory BAR
 ; =============================================================================
 
 [BITS 16]
@@ -135,6 +136,9 @@ cmd_table:
     dw  cmd_pci_bars,   h_pci_bars
     dw  cmd_pci_bar_read, h_pci_bar_read
     dw  cmd_pci_mem_read, h_pci_mem_read
+    dw  cmd_pci_mem_read8, h_pci_mem_read8
+    dw  cmd_pci_mem_read16, h_pci_mem_read16
+    dw  cmd_pci_mem_read32, h_pci_mem_read32
     dw  0
 
 ; =============================================================================
@@ -1225,6 +1229,227 @@ h_pci_mem_read:
     call    respond
     ret
 
+; ---- pci.mem.read{8,16,32} bdf=BB.DD.F bar=N offset=H ---------------------
+;   Typed little-endian reads from a memory-space BAR. These are intentionally
+;   the same constrained BAR-relative operation as pci.mem.read, but return a
+;   decoded value instead of a byte string.
+;
+;   Response:
+;     ok bdf=BB.DD.F bar=N kind=m32|m64|mlt1 addr=HHHHHHHH offset=HHHH width=N value=HEX
+h_pci_mem_read8:
+    mov     word [pci_bar_len], 1
+    mov     word [pci_mem_width_bits], 8
+    mov     word [pci_mem_usage_ptr], err_pci_mem_read8_usage
+    jmp     h_pci_mem_read_typed
+
+h_pci_mem_read16:
+    mov     word [pci_bar_len], 2
+    mov     word [pci_mem_width_bits], 16
+    mov     word [pci_mem_usage_ptr], err_pci_mem_read16_usage
+    jmp     h_pci_mem_read_typed
+
+h_pci_mem_read32:
+    mov     word [pci_bar_len], 4
+    mov     word [pci_mem_width_bits], 32
+    mov     word [pci_mem_usage_ptr], err_pci_mem_read32_usage
+
+h_pci_mem_read_typed:
+    mov     si, [arg_ptr]
+    test    si, si
+    jz      .usage
+    mov     di, key_bdf
+    call    find_kv
+    jc      .usage
+    call    parse_bdf
+    jc      .usage
+
+    mov     si, [arg_ptr]
+    mov     di, key_bar
+    call    find_kv_dec
+    jc      .usage
+    cmp     ax, 5
+    ja      .range
+    mov     [pci_bar_idx], al
+
+    mov     si, [arg_ptr]
+    mov     di, key_offset
+    call    find_kv_hex
+    jc      .usage
+    cmp     ax, 0x00FF
+    ja      .range
+    mov     [pci_bar_offset], ax
+    cmp     word [pci_bar_len], 1
+    je      .aligned
+    cmp     word [pci_bar_len], 2
+    jne     .align32
+    test    ax, 0x0001
+    jnz     .range
+    jmp     .aligned
+.align32:
+    test    ax, 0x0003
+    jnz     .range
+.aligned:
+
+    ; Probe presence via vendor id at config offset 0x00.
+    xor     al, al
+    call    pci_config_read_dword
+    cmp     ax, 0xFFFF
+    je      .absent
+
+    ; Header type (config 0x0E) -> number of BAR slots.
+    mov     al, 0x0C
+    call    pci_config_read_dword
+    shr     eax, 16
+    and     al, 0x7F
+    mov     cl, 6
+    cmp     al, 0x00
+    je      .got_nbars
+    mov     cl, 2
+    cmp     al, 0x01
+    je      .got_nbars
+    xor     cl, cl
+.got_nbars:
+    mov     [pci_nbars], cl
+    mov     al, [pci_bar_idx]
+    cmp     al, [pci_nbars]
+    jae     .range
+
+    ; Read BAR at offset 0x10 + 4*bar.
+    mov     al, [pci_bar_idx]
+    shl     al, 2
+    add     al, 0x10
+    call    pci_config_read_dword
+    mov     [pci_bar_lo], eax
+    test    eax, eax
+    jz      .bar_absent
+    test    al, 0x01
+    jnz     .not_mem
+
+    mov     dl, al
+    and     dl, 0x06
+    shr     dl, 1                   ; DL = memory type (0,1,2,3)
+    cmp     dl, 2
+    je      .m64
+    cmp     dl, 1
+    je      .mlt1
+    cmp     dl, 3
+    je      .unsupported
+
+    mov     eax, [pci_bar_lo]
+    and     eax, 0xFFFFFFF0
+    mov     word [pci_mem_kind_ptr], str_kind_m32
+    jmp     .got_base
+
+.mlt1:
+    mov     eax, [pci_bar_lo]
+    and     eax, 0xFFFFFFF0
+    mov     word [pci_mem_kind_ptr], str_kind_mlt1
+    jmp     .got_base
+
+.m64:
+    mov     al, [pci_bar_idx]
+    inc     al
+    cmp     al, [pci_nbars]
+    jae     .unsupported
+    shl     al, 2
+    add     al, 0x10
+    call    pci_config_read_dword
+    test    eax, eax
+    jnz     .addr_range
+    mov     eax, [pci_bar_lo]
+    and     eax, 0xFFFFFFF0
+    mov     word [pci_mem_kind_ptr], str_kind_m64
+
+.got_base:
+    movzx   ebx, word [pci_bar_offset]
+    add     eax, ebx
+    jc      .addr_range
+    mov     [pci_mem_addr], eax
+    mov     ebx, eax
+    movzx   eax, word [pci_bar_len]
+    dec     eax
+    add     eax, ebx
+    jc      .addr_range
+
+    ; "ok bdf=BB.DD.F bar=N kind=K addr=HHHHHHHH offset=HHHH width=N value=..."
+    mov     si, resp_ok_prefix
+    call    serial_puts_only
+    mov     si, resp_bdf_kw
+    call    serial_puts_only
+    call    emit_pci_bdf
+    mov     si, resp_bar_kw
+    call    serial_puts_only
+    xor     ah, ah
+    mov     al, [pci_bar_idx]
+    call    serial_put_udec
+    mov     si, resp_kind_kw
+    call    serial_puts_only
+    mov     si, [pci_mem_kind_ptr]
+    call    serial_puts_only
+    mov     si, resp_addr_kw
+    call    serial_puts_only
+    mov     eax, [pci_mem_addr]
+    call    serial_put_hex_dword
+    mov     si, resp_offset_kw
+    call    serial_puts_only
+    mov     ax, [pci_bar_offset]
+    call    serial_put_hex_word
+    mov     si, resp_width_kw
+    call    serial_puts_only
+    mov     ax, [pci_mem_width_bits]
+    call    serial_put_udec
+    mov     si, resp_value_kw
+    call    serial_puts_only
+
+    mov     esi, [pci_mem_addr]
+    call    enable_flat_fs
+    cmp     word [pci_bar_len], 1
+    je      .read8
+    cmp     word [pci_bar_len], 2
+    je      .read16
+    mov     eax, [fs:esi]
+    call    serial_put_hex_dword
+    jmp     .done
+.read16:
+    mov     ax, [fs:esi]
+    call    serial_put_hex_word
+    jmp     .done
+.read8:
+    mov     al, [fs:esi]
+    call    serial_put_hex_byte
+.done:
+    call    respond_end
+    ret
+
+.absent:
+    mov     si, err_pci_absent
+    call    respond
+    ret
+.bar_absent:
+    mov     si, err_pci_bar_absent
+    call    respond
+    ret
+.not_mem:
+    mov     si, err_pci_mem_non_mem
+    call    respond
+    ret
+.unsupported:
+    mov     si, err_pci_mem_unsupported
+    call    respond
+    ret
+.addr_range:
+    mov     si, err_pci_mem_addr_range
+    call    respond
+    ret
+.range:
+    mov     si, err_pci_mem_typed_range
+    call    respond
+    ret
+.usage:
+    mov     si, [pci_mem_usage_ptr]
+    call    respond
+    ret
+
 ; enable_flat_fs: leave FS with a base-0, 4 GB data descriptor cache while
 ; returning to real mode. DS/ES/SS are deliberately not reloaded.
 enable_flat_fs:
@@ -1861,7 +2086,7 @@ vga_banner:
     db '|  COM1 115200 8N1 - LLM driven   |', 13, 10
     db '+---------------------------------+', 13, 10, 13, 10, 0
 
-ready_msg:      db '# llmos v0.1 proto=1 primitives=13', 13, 10, 0
+ready_msg:      db '# llmos v0.1 proto=1 primitives=16', 13, 10, 0
 
 ; Command names (NUL-terminated)
 cmd_help:       db 'help', 0
@@ -1877,6 +2102,9 @@ cmd_pci_scan:   db 'pci.scan', 0
 cmd_pci_bars:   db 'pci.bars', 0
 cmd_pci_bar_read: db 'pci.bar.read', 0
 cmd_pci_mem_read: db 'pci.mem.read', 0
+cmd_pci_mem_read8: db 'pci.mem.read8', 0
+cmd_pci_mem_read16: db 'pci.mem.read16', 0
+cmd_pci_mem_read32: db 'pci.mem.read32', 0
 
 ; Argument key strings
 key_addr:       db 'addr', 0
@@ -1910,6 +2138,7 @@ resp_bars_kw:       db ' bars=', 0
 resp_offset_kw:     db ' offset=', 0
 resp_kind_kw:       db ' kind=', 0
 resp_kind_io_kw:    db ' kind=io', 0
+resp_width_kw:      db ' width=', 0
 
 ; pci.bars record-kind prefixes (each includes the trailing ':' separator so
 ; the base-address hex can be appended directly).
@@ -1947,6 +2176,12 @@ err_pci_bar_read_usage:
     db 'err code=bad_arg detail="usage: pci.bar.read bdf=BB.DD.F bar=N offset=HHHH len=N"', 0
 err_pci_mem_read_usage:
     db 'err code=bad_arg detail="usage: pci.mem.read bdf=BB.DD.F bar=N offset=HHHH len=N"', 0
+err_pci_mem_read8_usage:
+    db 'err code=bad_arg detail="usage: pci.mem.read8 bdf=BB.DD.F bar=N offset=HHHH"', 0
+err_pci_mem_read16_usage:
+    db 'err code=bad_arg detail="usage: pci.mem.read16 bdf=BB.DD.F bar=N offset=HHHH"', 0
+err_pci_mem_read32_usage:
+    db 'err code=bad_arg detail="usage: pci.mem.read32 bdf=BB.DD.F bar=N offset=HHHH"', 0
 err_pci_absent:
     db 'err code=unavailable detail="no such function"', 0
 err_pci_bar_absent:
@@ -1963,10 +2198,12 @@ err_pci_mem_unsupported:
     db 'err code=unavailable detail="unsupported memory BAR"', 0
 err_pci_mem_addr_range:
     db 'err code=out_of_range detail="MMIO address exceeds 32-bit space"', 0
+err_pci_mem_typed_range:
+    db 'err code=out_of_range detail="bar, offset, or alignment out of range"', 0
 
 ; Help response (full line).
 help_response:
-    db 'ok primitives=help,describe,cpu.vendor,cpu.features,mem.query,mem.read,rtc.now,ticks.since_boot,io.in,pci.scan,pci.bars,pci.bar.read,pci.mem.read', 0
+    db 'ok primitives=help,describe,cpu.vendor,cpu.features,mem.query,mem.read,rtc.now,ticks.since_boot,io.in,pci.scan,pci.bars,pci.bar.read,pci.mem.read,pci.mem.read8,pci.mem.read16,pci.mem.read32', 0
 
 ; Schema table: (name_ptr, schema_line_ptr). NULL-terminated.
 schema_table:
@@ -1983,6 +2220,9 @@ schema_table:
     dw  cmd_pci_bars,   sch_pci_bars
     dw  cmd_pci_bar_read, sch_pci_bar_read
     dw  cmd_pci_mem_read, sch_pci_mem_read
+    dw  cmd_pci_mem_read8, sch_pci_mem_read8
+    dw  cmd_pci_mem_read16, sch_pci_mem_read16
+    dw  cmd_pci_mem_read32, sch_pci_mem_read32
     dw  0
 
 sch_help:       db 'ok name=help args=none returns=primitives=CSV', 0
@@ -1998,6 +2238,9 @@ sch_pci_scan:   db 'ok name=pci.scan args=none returns="devices=B.D.F:VVVV:DDDD:
 sch_pci_bars:   db 'ok name=pci.bars args="bdf=BB.DD.F" returns="bdf=BB.DD.F bars=I:KIND[:BASE[:p|n]],..." kinds="none|io:BASE32|m32:BASE32:p|n|m64:BASE64:p|n|m64trunc:BASE32:p|n|mlt1:BASE32:p|n|rsv:BASE32:p|n" slots="6 for header-type 0, 2 for header-type 1, else 0" notes="m64 consumes I+1; m64trunc flags a self-contradictory 64-bit BAR on the last slot; bdf format matches pci.scan"', 0
 sch_pci_bar_read: db 'ok name=pci.bar.read args="bdf=BB.DD.F bar=N offset=H(0-ff) len=N(1-16)" returns="bdf=BB.DD.F bar=N kind=io port=H offset=H len=N data=HEX" notes="reads I/O-space BARs only; memory BARs return denied"', 0
 sch_pci_mem_read: db 'ok name=pci.mem.read args="bdf=BB.DD.F bar=N offset=H(0-ff) len=N(1-16)" returns="bdf=BB.DD.F bar=N kind=m32|m64|mlt1 addr=H offset=H len=N data=HEX" notes="reads memory-space BARs only via flat FS; I/O BARs return denied; 64-bit BARs require high dword zero"', 0
+sch_pci_mem_read8: db 'ok name=pci.mem.read8 args="bdf=BB.DD.F bar=N offset=H(0-ff)" returns="bdf=BB.DD.F bar=N kind=m32|m64|mlt1 addr=H offset=H width=8 value=HH" notes="reads one little-endian byte from a memory BAR; I/O BARs return denied"', 0
+sch_pci_mem_read16: db 'ok name=pci.mem.read16 args="bdf=BB.DD.F bar=N offset=H(0-ff,aligned)" returns="bdf=BB.DD.F bar=N kind=m32|m64|mlt1 addr=H offset=H width=16 value=HHHH" notes="reads one little-endian aligned word from a memory BAR; I/O BARs return denied"', 0
+sch_pci_mem_read32: db 'ok name=pci.mem.read32 args="bdf=BB.DD.F bar=N offset=H(0-ff,aligned)" returns="bdf=BB.DD.F bar=N kind=m32|m64|mlt1 addr=H offset=H width=32 value=HHHHHHHH" notes="reads one little-endian aligned dword from a memory BAR; I/O BARs return denied"', 0
 
 align 8
 flat_gdt:
@@ -2120,3 +2363,5 @@ pci_bar_len:    dw 0
 pci_bar_port:   dw 0
 pci_mem_addr:   dd 0
 pci_mem_kind_ptr: dw 0
+pci_mem_width_bits: dw 0
+pci_mem_usage_ptr: dw 0

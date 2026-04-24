@@ -1,0 +1,41 @@
+# # llmos v0.1 proto=1 primitives=16
+# =============================================================================
+# Beat 8: Typed MMIO reads - register values, not byte strings
+#
+# Task handed to the model: "Read a memory-mapped device register as a typed
+# value."
+#
+# Beat 7 proved the kernel can fetch bytes from memory BARs. This beat keeps
+# the same BAR-relative shape, but lets the model ask for 8-, 16-, or 32-bit
+# little-endian values directly.
+# =============================================================================
+# Rediscover the display device and the typed MMIO primitive.
+> pci.scan
+< ok devices=00.00.0:8086:1237:06,00.01.0:8086:7000:06,00.01.1:8086:7010:01,00.01.3:8086:7113:06,00.02.0:1234:1111:03,00.03.0:8086:100e:02
+> describe pci.mem.read32
+< ok name=pci.mem.read32 args="bdf=BB.DD.F bar=N offset=H(0-ff,aligned)" returns="bdf=BB.DD.F bar=N kind=m32|m64|mlt1 addr=H offset=H width=32 value=HHHHHHHH" notes="reads one little-endian aligned dword from a memory BAR; I/O BARs return denied"
+> pci.bars bdf=00.02.0
+< ok bdf=00.02.0 bars=0:m32:fd000000:p,1:none,2:m32:febb0000:n,3:none,4:none,5:none
+# std-vga BAR2 is a non-prefetchable MMIO register window. Read the same
+# offset at three native widths so the protocol exposes decoded values.
+> pci.mem.read8 bdf=00.02.0 bar=2 offset=0
+< ok bdf=00.02.0 bar=2 kind=m32 addr=febb0000 offset=0000 width=8 value=00
+> pci.mem.read16 bdf=00.02.0 bar=2 offset=0
+< ok bdf=00.02.0 bar=2 kind=m32 addr=febb0000 offset=0000 width=16 value=ff00
+> pci.mem.read32 bdf=00.02.0 bar=2 offset=0
+< ok bdf=00.02.0 bar=2 kind=m32 addr=febb0000 offset=0000 width=32 value=ffffff00
+# I/O BARs are still denied on the memory primitive family.
+> pci.mem.read32 bdf=00.01.1 bar=4 offset=0
+< err code=denied detail="only memory BAR reads are supported"
+# Empty BARs are absence, not denial.
+> pci.mem.read32 bdf=00.01.1 bar=0 offset=0
+< err code=unavailable detail="BAR not present"
+# Slot ranges remain bounded by the device header type.
+> pci.mem.read32 bdf=00.02.0 bar=6 offset=0
+< err code=out_of_range detail="bar, offset, or alignment out of range"
+# Multi-byte typed reads require natural alignment.
+> pci.mem.read32 bdf=00.02.0 bar=2 offset=1
+< err code=out_of_range detail="bar, offset, or alignment out of range"
+# Malformed BDFs still fail before config-space probing.
+> pci.mem.read32 bdf=00.02.0x bar=0 offset=0
+< err code=bad_arg detail="usage: pci.mem.read32 bdf=BB.DD.F bar=N offset=HHHH"

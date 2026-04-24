@@ -77,7 +77,7 @@ Error codes in v1:
 On reset, the kernel sets up serial and emits:
 
 ```
-# llmos v0.1 proto=1 primitives=13
+# llmos v0.1 proto=1 primitives=16
 ```
 
 A bridge MUST wait for a line whose first character is `#` before sending
@@ -245,3 +245,36 @@ If the BAR is I/O-space rather than memory-space, the response is
 malformed, or high 64-bit memory BARs are rejected; a 64-bit memory BAR is
 readable only when its high dword is zero. Out-of-range slot, offset,
 length, or effective physical address values return `out_of_range`.
+
+## BAR-bound typed memory reads
+
+`pci.mem.read8`, `pci.mem.read16`, and `pci.mem.read32` read one
+little-endian value from a memory-space BAR discovered through `pci.bars`.
+They use the same BAR-relative addressing policy as `pci.mem.read`, but
+return a decoded `value=` field instead of a byte string.
+
+Arguments:
+
+- `bdf` - same `BB.DD.F` tuple emitted by `pci.scan`
+- `bar` - decimal BAR slot index (`0`-`5`, further capped by header type)
+- `offset` - hex byte offset from the BAR base (`0`-`ff`); `read16` and
+  `read32` require natural alignment
+
+The responses are:
+
+```
+ok bdf=BB.DD.F bar=N kind=m32|m64|mlt1 addr=HHHHHHHH offset=HHHH width=8 value=HH
+ok bdf=BB.DD.F bar=N kind=m32|m64|mlt1 addr=HHHHHHHH offset=HHHH width=16 value=HHHH
+ok bdf=BB.DD.F bar=N kind=m32|m64|mlt1 addr=HHHHHHHH offset=HHHH width=32 value=HHHHHHHH
+```
+
+`addr` is the effective physical address after adding `offset` to the BAR
+base. `width` is the value width in bits. For `read16` and `read32`, the
+hex `value` is the little-endian numeric value loaded from MMIO, not the
+address-order byte string that `pci.mem.read` returns.
+
+The same memory-BAR restrictions and error behavior apply: I/O BARs are
+denied, empty BARs are unavailable, unsupported memory BARs are unavailable,
+and high 64-bit addresses are out of range. Out-of-range BAR slots,
+offsets, or unaligned multi-byte offsets return
+`err code=out_of_range detail="bar, offset, or alignment out of range"`.
