@@ -28,7 +28,7 @@
 > describe mem.query
 < ok name=mem.query args=none returns="conv_kb=N ext_kb=N ext_blocks_64k=N"
 > describe mem.read
-< ok name=mem.read args="addr=H(1-4) len=N(1-256)" returns="addr=H len=N data=HEX"
+< ok name=mem.read args="addr=H(1-4) len=N(1-256)" returns="addr=H len=N data=HEX" notes="reads bytes from segment 0; range may not cross offset ffff"
 > describe mem.read8
 < ok name=mem.read8 args="addr=H(1-4)" returns="addr=H width=8 value=HH" notes="reads one byte from segment 0"
 > describe mem.read16

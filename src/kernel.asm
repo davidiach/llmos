@@ -3148,7 +3148,7 @@ sch_describe:   db 'ok name=describe args=NAME returns=schema-line', 0
 sch_cpu_vendor: db 'ok name=cpu.vendor args=none returns="vendor=S family=N model=N stepping=N"', 0
 sch_cpu_feat:   db 'ok name=cpu.features args=none returns="features=CSV (from CPUID leaf 1 EDX)"', 0
 sch_mem_query:  db 'ok name=mem.query args=none returns="conv_kb=N ext_kb=N ext_blocks_64k=N"', 0
-sch_mem_read:   db 'ok name=mem.read args="addr=H(1-4) len=N(1-256)" returns="addr=H len=N data=HEX"', 0
+sch_mem_read:   db 'ok name=mem.read args="addr=H(1-4) len=N(1-256)" returns="addr=H len=N data=HEX" notes="reads bytes from segment 0; range may not cross offset ffff"', 0
 sch_mem_read8:  db 'ok name=mem.read8 args="addr=H(1-4)" returns="addr=H width=8 value=HH" notes="reads one byte from segment 0"', 0
 sch_mem_read16: db 'ok name=mem.read16 args="addr=H(1-4,aligned)" returns="addr=H width=16 value=HHHH" notes="reads one little-endian aligned word from segment 0"', 0
 sch_mem_read32: db 'ok name=mem.read32 args="addr=H(1-4,aligned)" returns="addr=H width=32 value=HHHHHHHH" notes="reads one little-endian aligned dword from segment 0"', 0
