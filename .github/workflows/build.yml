@@ -75,6 +75,7 @@ jobs:
           # CPUID leaf 1 encodes display model through base+extended fields.
           # Haswell is family 6, model 60; reporting model 12 means the
           # kernel ignored the extended model nibble.
+          grep -q "^< ok ms=[0-9]\+" /tmp/02_hardware_archaeology.txt
           cat > /tmp/cpu_model_probe.llmos <<'EOF'
           cpu.vendor
           EOF

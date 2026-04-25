@@ -427,6 +427,9 @@ docs/
   but still have no writes.
 - `io.out` is deliberately absent in v0.1 — the allowlist for writes wants
   more design thought than reads.
+- `ticks.since_boot` is derived from the BIOS since-midnight tick counter.
+  It compensates for one midnight rollover, but is not a multi-day uptime
+  clock.
 - `pci.bar.read` and `pci.mem.read` both use small bounded reads.
   `pci.mem.read` reaches only memory BARs whose base fits in 32-bit
   physical address space; it does not handle high 64-bit BARs, writes,
