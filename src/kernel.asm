@@ -100,6 +100,11 @@ main_loop:
     call    vga_puts
     call    vga_newline
 
+    ; Overlong requests are malformed. Without this guard the kernel would
+    ; silently parse and execute the truncated prefix.
+    cmp     byte [input_overflow], 0
+    jne     .line_too_long
+
     ; Empty line -> just continue.
     cmp     byte [input_buf], 0
     je      main_loop
@@ -123,6 +128,10 @@ main_loop:
     jmp     main_loop
 .unknown:
     mov     si, err_unknown_cmd
+    call    respond
+    jmp     main_loop
+.line_too_long:
+    mov     si, err_line_too_long
     call    respond
     jmp     main_loop
 
@@ -2648,6 +2657,7 @@ serial_puts_only:
 serial_read_line:
     push    ax
     push    bp
+    mov     byte [input_overflow], 0
     mov     bp, di
 .next:
     call    serial_getc
@@ -2660,8 +2670,11 @@ serial_read_line:
     mov     bx, di
     sub     bx, bp
     cmp     bx, INPUT_MAX-1
-    jae     .next
+    jae     .overflow
     stosb
+    jmp     .next
+.overflow:
+    mov     byte [input_overflow], 1
     jmp     .next
 .back:
     cmp     di, bp
@@ -3049,6 +3062,8 @@ str_kind_mlt1:      db 'mlt1', 0
 ; Error responses (full lines, including newline)
 err_unknown_cmd:
     db 'err code=unknown_cmd detail="try `help`"', 0
+err_line_too_long:
+    db 'err code=bad_arg detail="request line too long"', 0
 err_describe_usage:
     db 'err code=bad_arg detail="usage: describe NAME"', 0
 err_describe_unknown:
@@ -3285,6 +3300,7 @@ feat_htt:     db 'htt', 0
 ; BSS - uninitialised state
 ; =============================================================================
 input_buf:      times INPUT_MAX db 0
+input_overflow: db 0
 arg_ptr:        dw 0
 cpu_vbuf:       times 13 db 0
 cpu_sig:        dd 0

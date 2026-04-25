@@ -33,6 +33,10 @@ tokens (no whitespace), hexadecimal (1–4 digits, case-insensitive), or
 unsigned decimal integers that fit in 16 bits. Leading zeroes on decimal
 values are accepted as long as the resulting value fits.
 
+Request lines are capped at 255 bytes, excluding the trailing CR/LF. Longer
+requests return `err code=bad_arg detail="request line too long"` without
+executing a truncated prefix.
+
 Examples:
 ```
 help
