@@ -1,0 +1,36 @@
+# =============================================================================
+# Beat 9: PCI config reads - opening the device header
+#
+# Task handed to the model: "Read raw PCI configuration registers for a
+# device."
+#
+# Earlier beats found devices and decoded their BARs. This beat reads the
+# config-space bytes behind those summaries: vendor/device id, command/status,
+# class code, and a cross-dword slice.
+# =============================================================================
+
+# Rediscover the display device and the config-space read primitive.
+pci.scan
+describe pci.config.read
+
+# Vendor/device id at config offset 0x00. The byte order is address order,
+# so std-vga's 1234:1111 appears as 34121111.
+pci.config.read bdf=00.02.0 offset=0 len=4
+
+# Command/status at offset 0x04.
+pci.config.read bdf=00.02.0 offset=4 len=4
+
+# Revision, programming interface, subclass, base class at offset 0x08.
+pci.config.read bdf=00.02.0 offset=8 len=4
+
+# Reads can cross dword boundaries while staying inside 0x00..0xff.
+pci.config.read bdf=00.02.0 offset=e len=4
+
+# Absent functions are still unavailable, not all-ones data.
+pci.config.read bdf=00.1f.0 offset=0 len=4
+
+# Keep config reads bounded to the 256-byte conventional header space.
+pci.config.read bdf=00.02.0 offset=f8 len=9
+
+# Malformed BDFs still fail before config-space probing.
+pci.config.read bdf=00.02.0x offset=0 len=4

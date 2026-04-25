@@ -40,7 +40,7 @@ class LlmosSession:
             raise FileNotFoundError(f"image not found: {self.image}")
         launch = [
             qemu,
-            "-drive", f"format=raw,file={self.image}",
+            "-drive", f"format=raw,if=floppy,file={self.image}",
             "-serial", "stdio",
             "-display", "none",
             "-no-reboot",

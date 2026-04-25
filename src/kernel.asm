@@ -24,6 +24,7 @@
 ;     ticks.since_boot         BIOS ticks since boot, in ms
 ;     io.in port=H             8-bit port read (allowlisted)
 ;     pci.scan                 enumerate PCI bus 0 via config ports
+;     pci.config.read ...      read bytes from a function's config space
 ;     pci.bars bdf=BB.DD.F     decode a function's BARs (I/O, mmio32, mmio64)
 ;     pci.bar.read ...         read bytes from an I/O-space BAR
 ;     pci.mem.read ...         read bytes from a memory-space BAR
@@ -133,6 +134,7 @@ cmd_table:
     dw  cmd_ticks,      h_ticks
     dw  cmd_io_in,      h_io_in
     dw  cmd_pci_scan,   h_pci_scan
+    dw  cmd_pci_config_read, h_pci_config_read
     dw  cmd_pci_bars,   h_pci_bars
     dw  cmd_pci_bar_read, h_pci_bar_read
     dw  cmd_pci_mem_read, h_pci_mem_read
@@ -140,6 +142,18 @@ cmd_table:
     dw  cmd_pci_mem_read16, h_pci_mem_read16
     dw  cmd_pci_mem_read32, h_pci_mem_read32
     dw  0
+
+align 8
+flat_gdt:
+    dq  0x0000000000000000
+    dw  0xFFFF, 0x0000
+    db  0x00, 10011010b, 10001111b, 0x00
+    dw  0xFFFF, 0x0000
+    db  0x00, 10010010b, 11001111b, 0x00
+flat_gdt_end:
+flat_gdt_desc:
+    dw  flat_gdt_end - flat_gdt - 1
+    dd  flat_gdt
 
 ; =============================================================================
 ; Handlers. Each writes exactly one response line (may be long).
@@ -657,6 +671,102 @@ pci_config_read_dword:
     in      eax, dx
     pop     ecx
     pop     ebx
+    ret
+
+; ---- pci.config.read bdf=BB.DD.F offset=H len=N ---------------------------
+;   Read up to 16 bytes from a PCI function's 256-byte config space.
+;   Config reads are side-effect-free enough to expose directly, but still
+;   bounded: the caller names a BDF and cannot walk past offset 0xff.
+;
+;   Response:
+;     ok bdf=BB.DD.F offset=HH len=N data=HEX
+h_pci_config_read:
+    mov     si, [arg_ptr]
+    test    si, si
+    jz      .usage
+    mov     di, key_bdf
+    call    find_kv
+    jc      .usage
+    call    parse_bdf
+    jc      .usage
+
+    mov     si, [arg_ptr]
+    mov     di, key_offset
+    call    find_kv_hex
+    jc      .usage
+    cmp     ax, 0x00FF
+    ja      .range
+    mov     [pci_cfg_offset], al
+
+    mov     si, [arg_ptr]
+    mov     di, key_len
+    call    find_kv_dec
+    jc      .usage
+    test    ax, ax
+    jz      .range
+    cmp     ax, 16
+    ja      .range
+    mov     [pci_cfg_len], ax
+
+    movzx   bx, byte [pci_cfg_offset]
+    add     bx, ax
+    dec     bx
+    cmp     bx, 0x00FF
+    ja      .range
+
+    ; Probe presence via vendor id at config offset 0x00.
+    xor     al, al
+    call    pci_config_read_dword
+    cmp     ax, 0xFFFF
+    je      .absent
+
+    ; "ok bdf=BB.DD.F offset=HH len=N data=..."
+    mov     si, resp_ok_prefix
+    call    serial_puts_only
+    mov     si, resp_bdf_kw
+    call    serial_puts_only
+    call    emit_pci_bdf
+    mov     si, resp_offset_kw
+    call    serial_puts_only
+    xor     ah, ah
+    mov     al, [pci_cfg_offset]
+    call    serial_put_hex_byte
+    mov     si, resp_len_kw
+    call    serial_puts_only
+    mov     ax, [pci_cfg_len]
+    call    serial_put_udec
+    mov     si, resp_data_kw
+    call    serial_puts_only
+
+    mov     cx, [pci_cfg_len]
+    mov     bl, [pci_cfg_offset]
+.dump:
+    mov     al, bl
+    call    pci_config_read_dword
+    mov     dl, bl
+    and     dl, 0x03
+    jz      .emit
+.shift:
+    shr     eax, 8
+    dec     dl
+    jnz     .shift
+.emit:
+    call    serial_put_hex_byte
+    inc     bl
+    loop    .dump
+    call    respond_end
+    ret
+.absent:
+    mov     si, err_pci_absent
+    call    respond
+    ret
+.range:
+    mov     si, err_pci_config_range
+    call    respond
+    ret
+.usage:
+    mov     si, err_pci_config_read_usage
+    call    respond
     ret
 
 ; ---- pci.bars bdf=BB.DD.F -------------------------------------------------
@@ -2086,7 +2196,7 @@ vga_banner:
     db '|  COM1 115200 8N1 - LLM driven   |', 13, 10
     db '+---------------------------------+', 13, 10, 13, 10, 0
 
-ready_msg:      db '# llmos v0.1 proto=1 primitives=16', 13, 10, 0
+ready_msg:      db '# llmos v0.1 proto=1 primitives=17', 13, 10, 0
 
 ; Command names (NUL-terminated)
 cmd_help:       db 'help', 0
@@ -2099,6 +2209,7 @@ cmd_rtc_now:    db 'rtc.now', 0
 cmd_ticks:      db 'ticks.since_boot', 0
 cmd_io_in:      db 'io.in', 0
 cmd_pci_scan:   db 'pci.scan', 0
+cmd_pci_config_read: db 'pci.config.read', 0
 cmd_pci_bars:   db 'pci.bars', 0
 cmd_pci_bar_read: db 'pci.bar.read', 0
 cmd_pci_mem_read: db 'pci.mem.read', 0
@@ -2172,6 +2283,10 @@ err_io_usage:
     db 'err code=bad_arg detail="usage: io.in port=HH"', 0
 err_pci_bars_usage:
     db 'err code=bad_arg detail="usage: pci.bars bdf=BB.DD.F"', 0
+err_pci_config_read_usage:
+    db 'err code=bad_arg detail="usage: pci.config.read bdf=BB.DD.F offset=HH len=N"', 0
+err_pci_config_range:
+    db 'err code=out_of_range detail="offset or len out of range"', 0
 err_pci_bar_read_usage:
     db 'err code=bad_arg detail="usage: pci.bar.read bdf=BB.DD.F bar=N offset=HHHH len=N"', 0
 err_pci_mem_read_usage:
@@ -2203,7 +2318,7 @@ err_pci_mem_typed_range:
 
 ; Help response (full line).
 help_response:
-    db 'ok primitives=help,describe,cpu.vendor,cpu.features,mem.query,mem.read,rtc.now,ticks.since_boot,io.in,pci.scan,pci.bars,pci.bar.read,pci.mem.read,pci.mem.read8,pci.mem.read16,pci.mem.read32', 0
+    db 'ok primitives=help,describe,cpu.vendor,cpu.features,mem.query,mem.read,rtc.now,ticks.since_boot,io.in,pci.scan,pci.config.read,pci.bars,pci.bar.read,pci.mem.read,pci.mem.read8,pci.mem.read16,pci.mem.read32', 0
 
 ; Schema table: (name_ptr, schema_line_ptr). NULL-terminated.
 schema_table:
@@ -2217,6 +2332,7 @@ schema_table:
     dw  cmd_ticks,      sch_ticks
     dw  cmd_io_in,      sch_io_in
     dw  cmd_pci_scan,   sch_pci_scan
+    dw  cmd_pci_config_read, sch_pci_config_read
     dw  cmd_pci_bars,   sch_pci_bars
     dw  cmd_pci_bar_read, sch_pci_bar_read
     dw  cmd_pci_mem_read, sch_pci_mem_read
@@ -2235,24 +2351,13 @@ sch_rtc_now:    db 'ok name=rtc.now args=none returns="iso=YYYY-MM-DDTHH:MM:SS"'
 sch_ticks:      db 'ok name=ticks.since_boot args=none returns="ms=N"', 0
 sch_io_in:      db 'ok name=io.in args="port=H" returns="port=H value=H" allowlist=0x20,0x21,0x40,0x43,0x60,0x61,0x64,0x70,0x71', 0
 sch_pci_scan:   db 'ok name=pci.scan args=none returns="devices=B.D.F:VVVV:DDDD:CC[,...]" scope="bus 0 + any PCI-to-PCI bridges reachable from it; class = base class byte"', 0
+sch_pci_config_read: db 'ok name=pci.config.read args="bdf=BB.DD.F offset=H(0-ff) len=N(1-16)" returns="bdf=BB.DD.F offset=H len=N data=HEX" notes="reads PCI config-space bytes; absent functions return unavailable"', 0
 sch_pci_bars:   db 'ok name=pci.bars args="bdf=BB.DD.F" returns="bdf=BB.DD.F bars=I:KIND[:BASE[:p|n]],..." kinds="none|io:BASE32|m32:BASE32:p|n|m64:BASE64:p|n|m64trunc:BASE32:p|n|mlt1:BASE32:p|n|rsv:BASE32:p|n" slots="6 for header-type 0, 2 for header-type 1, else 0" notes="m64 consumes I+1; m64trunc flags a self-contradictory 64-bit BAR on the last slot; bdf format matches pci.scan"', 0
 sch_pci_bar_read: db 'ok name=pci.bar.read args="bdf=BB.DD.F bar=N offset=H(0-ff) len=N(1-16)" returns="bdf=BB.DD.F bar=N kind=io port=H offset=H len=N data=HEX" notes="reads I/O-space BARs only; memory BARs return denied"', 0
 sch_pci_mem_read: db 'ok name=pci.mem.read args="bdf=BB.DD.F bar=N offset=H(0-ff) len=N(1-16)" returns="bdf=BB.DD.F bar=N kind=m32|m64|mlt1 addr=H offset=H len=N data=HEX" notes="reads memory-space BARs only via flat FS; I/O BARs return denied; 64-bit BARs require high dword zero"', 0
 sch_pci_mem_read8: db 'ok name=pci.mem.read8 args="bdf=BB.DD.F bar=N offset=H(0-ff)" returns="bdf=BB.DD.F bar=N kind=m32|m64|mlt1 addr=H offset=H width=8 value=HH" notes="reads one little-endian byte from a memory BAR; I/O BARs return denied"', 0
 sch_pci_mem_read16: db 'ok name=pci.mem.read16 args="bdf=BB.DD.F bar=N offset=H(0-ff,aligned)" returns="bdf=BB.DD.F bar=N kind=m32|m64|mlt1 addr=H offset=H width=16 value=HHHH" notes="reads one little-endian aligned word from a memory BAR; I/O BARs return denied"', 0
 sch_pci_mem_read32: db 'ok name=pci.mem.read32 args="bdf=BB.DD.F bar=N offset=H(0-ff,aligned)" returns="bdf=BB.DD.F bar=N kind=m32|m64|mlt1 addr=H offset=H width=32 value=HHHHHHHH" notes="reads one little-endian aligned dword from a memory BAR; I/O BARs return denied"', 0
-
-align 8
-flat_gdt:
-    dq  0x0000000000000000
-    dw  0xFFFF, 0x0000
-    db  0x00, 10011010b, 10001111b, 0x00
-    dw  0xFFFF, 0x0000
-    db  0x00, 10010010b, 11001111b, 0x00
-flat_gdt_end:
-flat_gdt_desc:
-    dw  flat_gdt_end - flat_gdt - 1
-    dd  flat_gdt
 
 ; io.in allowlist (terminator 0xFFFF)
 io_allowlist:
@@ -2353,6 +2458,8 @@ pci_class:      db 0
 pci_hdr:        db 0
 pci_ids:        dd 0
 pci_bus_todo:   times 32 db 0      ; 256-bit bitmap of buses still to scan
+pci_cfg_offset: db 0
+pci_cfg_len:    dw 0
 pci_nbars:      db 0
 pci_pref:       db 0
 pci_bar_lo:     dd 0
