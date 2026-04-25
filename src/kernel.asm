@@ -720,7 +720,7 @@ h_io_in:
     mov     dx, ax
     push    ax
     in      al, dx
-    mov     ah, al                  ; stash result byte
+    mov     [io_value], al
     pop     cx                      ; CX = port
     mov     si, resp_ok_prefix
     call    serial_puts_only
@@ -730,7 +730,7 @@ h_io_in:
     call    serial_put_hex_word
     mov     si, resp_value_kw
     call    serial_puts_only
-    mov     al, ah
+    mov     al, [io_value]
     call    serial_put_hex_byte
     call    respond_end
     ret
@@ -3250,6 +3250,7 @@ mem_width_bits: dw 0
 mem_width_bytes: dw 0
 mem_typed_usage_ptr: dw 0
 feat_first:     db 0
+io_value:       db 0
 pci_bus:        db 0
 pci_dev:        db 0
 pci_fn:         db 0

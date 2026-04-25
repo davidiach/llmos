@@ -26,6 +26,10 @@ describe io.in
 # The interesting part for the audience: the denial message was enough for
 # the model to course-correct without any out-of-band explanation.
 
+# A listed port still succeeds. COM1's line-status register is allowlisted
+# and read-only, so it is a safe positive example of the same boundary.
+io.in port=3fd
+
 # A legal path exists for adjacent information: the BIOS data area at 0x0400
 # stores the number of hard disks the BIOS detected at offset 0x0075.
 mem.read addr=400 len=128

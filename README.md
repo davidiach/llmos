@@ -252,9 +252,10 @@ Transcript: `demo/transcripts/02_hardware_archaeology.llmos`.
 **Beat 3 — The interesting failure.** Task: *read SMART status*. There is
 no `disk.*` primitive. Claude reaches for `io.in` on the ATA ports at
 0x1F0/0x1F7. Both denied. The schema shows the allowlist; ATA is not on
-it. Claude pivots — reads the BIOS data area for the hard-disk count,
-returns a related-but-legal answer, and explains the boundary. Denial as
-an interface element, not an error.
+it. A listed COM1 status port succeeds, proving the same boundary has a
+positive side. Claude then pivots — reads the BIOS data area for the
+hard-disk count, returns a related-but-legal answer, and explains the
+boundary. Denial as an interface element, not an error.
 
 Transcript: `demo/transcripts/03_denied_path.llmos`.
 
