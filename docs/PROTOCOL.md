@@ -239,6 +239,10 @@ Multi-function devices are detected via bit 7 of the header-type byte
 (config offset 0x0E); single-function devices report only function 0.
 An empty scan yields `ok devices=` with no records.
 
+PCI primitives that accept a `bdf` argument require the same fixed-width
+`BB.DD.F` shape emitted by `pci.scan`; shortened forms such as `0.2.0`
+are malformed.
+
 ## PCI config-space reads
 
 `pci.config.read bdf=BB.DD.F offset=H len=N` reads bytes from a single

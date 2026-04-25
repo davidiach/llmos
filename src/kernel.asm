@@ -2460,21 +2460,29 @@ emit_pref_suffix:
     call    serial_putc
     ret
 
-; parse_bdf: DS:SI -> "BB.DD.F" where BB and DD are 1-4 hex digits (bounded
-; by bus<=0xFF, device<=0x1F) and F is a single decimal digit 0..7 followed
-; by end-of-string or an argument separator. Writes pci_bus/pci_dev/pci_fn.
+; parse_bdf: DS:SI -> fixed-width "BB.DD.F". Writes pci_bus/pci_dev/pci_fn.
 ; CF=0 on success.
 parse_bdf:
+    mov     bx, si
     call    parse_hex_word
     jc      .bad
+    mov     dx, si
+    sub     dx, bx
+    cmp     dx, 2
+    jne     .bad
     cmp     ax, 0x00FF
     ja      .bad
     mov     [pci_bus], al
     cmp     byte [si], '.'
     jne     .bad
     inc     si
+    mov     bx, si
     call    parse_hex_word
     jc      .bad
+    mov     dx, si
+    sub     dx, bx
+    cmp     dx, 2
+    jne     .bad
     cmp     ax, 0x001F
     ja      .bad
     mov     [pci_dev], al
