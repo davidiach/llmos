@@ -1,4 +1,4 @@
-# # llmos v0.1 proto=1 primitives=25
+# # llmos v0.1 proto=1 primitives=26
 # =============================================================================
 # Beat 4: PCI walk — figure out what hardware is on the bus
 #
@@ -12,7 +12,7 @@
 # =============================================================================
 # What can this OS do?
 > help
-< ok primitives=help,describe,cpu.vendor,cpu.features,mem.query,mem.read,mem.read8,mem.read16,mem.read32,rtc.now,ticks.since_boot,io.in,pci.scan,pci.config.read,pci.config.read8,pci.config.read16,pci.config.read32,pci.cap.list,pci.cap.read,pci.bars,pci.bar.read,pci.mem.read,pci.mem.read8,pci.mem.read16,pci.mem.read32
+< ok primitives=help,describe,cpu.vendor,cpu.features,mem.query,mem.read,mem.read8,mem.read16,mem.read32,mem.read.seg,rtc.now,ticks.since_boot,io.in,pci.scan,pci.config.read,pci.config.read8,pci.config.read16,pci.config.read32,pci.cap.list,pci.cap.read,pci.bars,pci.bar.read,pci.mem.read,pci.mem.read8,pci.mem.read16,pci.mem.read32
 # `pci.scan` is right there in the primitive list. Learn the record shape
 # before calling it — the schema explains what each colon-separated field is.
 > describe pci.scan

@@ -1,4 +1,4 @@
-# # llmos v0.1 proto=1 primitives=25
+# # llmos v0.1 proto=1 primitives=26
 # =============================================================================
 # Beat 8: Typed MMIO reads - register values, not byte strings
 #

@@ -1,0 +1,27 @@
+# # llmos v0.1 proto=1 primitives=26
+# =============================================================================
+# Beat 14: Segment memory reads - BIOS ROM by real-mode address
+#
+# Task handed to the model: "Read the BIOS reset vector."
+#
+# Earlier memory reads were fixed to segment 0. This beat keeps the same
+# bounded, read-only byte-string shape, but lets the model name a real-mode
+# segment:offset pair explicitly.
+# =============================================================================
+# Rediscover the segment-memory primitive.
+> describe mem.read.seg
+< ok name=mem.read.seg args="seg=H(0-ffff) offset=H(0-ffff) len=N(1-256)" returns="seg=H offset=H len=N data=HEX" notes="reads bytes through a real-mode segment:offset; range may not cross offset ffff"
+# Segment 0 agrees with mem.read at the boot sector address.
+> mem.read addr=7c00 len=4
+< ok addr=7c00 len=4 data=fa31c08e
+> mem.read.seg seg=0000 offset=7c00 len=4
+< ok seg=0000 offset=7c00 len=4 data=fa31c08e
+# The BIOS reset vector lives at physical ffff0, i.e. f000:fff0.
+> mem.read.seg seg=f000 offset=fff0 len=16
+< ok seg=f000 offset=fff0 len=16 data=ea5be000f030362f32332f393900fc01
+# Reads cannot cross the end of the named segment, and malformed offset
+# strings are still rejected rather than silently truncated.
+> mem.read.seg seg=f000 offset=fff0 len=17
+< err code=out_of_range detail="offset or len out of range"
+> mem.read.seg seg=f000 offset=fff0x len=1
+< err code=bad_arg detail="usage: mem.read.seg seg=HHHH offset=HHHH len=N"

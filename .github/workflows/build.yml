@@ -49,6 +49,7 @@ jobs:
           grep -q "^< ok name=mem.read8 " /tmp/01_cold_discovery.txt
           grep -q "^< ok name=mem.read16 " /tmp/01_cold_discovery.txt
           grep -q "^< ok name=mem.read32 " /tmp/01_cold_discovery.txt
+          grep -q "^< ok name=mem.read.seg " /tmp/01_cold_discovery.txt
           grep -q "^< ok name=pci.config.read " /tmp/01_cold_discovery.txt
           grep -q "^< ok name=pci.config.read8 " /tmp/01_cold_discovery.txt
           grep -q "^< ok name=pci.config.read16 " /tmp/01_cold_discovery.txt
@@ -204,6 +205,18 @@ jobs:
           grep -q '^< err code=out_of_range detail="addr or alignment out of range"' /tmp/13_typed_memory_reads.txt
           grep -A1 "^> mem\.read32 addr=7c00x" /tmp/13_typed_memory_reads.txt \
             | grep -q '^< err code=bad_arg detail="usage: mem.read32 addr=HHHH"'
+
+          run_transcript 14_segment_memory_reads
+          # Beat 14: explicit segment:offset memory reads - segment 0 agrees
+          # with mem.read, BIOS ROM at f000:fff0 is readable, and crossing
+          # offset ffff is rejected.
+          grep -q "^< ok name=mem.read.seg " /tmp/14_segment_memory_reads.txt
+          grep -q "^< ok addr=7c00 len=4 data=fa31c08e" /tmp/14_segment_memory_reads.txt
+          grep -q "^< ok seg=0000 offset=7c00 len=4 data=fa31c08e" /tmp/14_segment_memory_reads.txt
+          grep -q "^< ok seg=f000 offset=fff0 len=16 data=ea5be000f030362f32332f393900fc01" /tmp/14_segment_memory_reads.txt
+          grep -q '^< err code=out_of_range detail="offset or len out of range"' /tmp/14_segment_memory_reads.txt
+          grep -A1 "^> mem\.read\.seg seg=f000 offset=fff0x" /tmp/14_segment_memory_reads.txt \
+            | grep -q '^< err code=bad_arg detail="usage: mem.read.seg seg=HHHH offset=HHHH len=N"'
 
           # Capability-chain regression: attach a virtio PCI function because
           # the default i440FX devices expose no conventional capability list.

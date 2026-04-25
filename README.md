@@ -24,9 +24,9 @@ The model bootstraps its understanding of the machine from the inside —
 it composes.
 
 ```
-# llmos v0.1 proto=1 primitives=25
+# llmos v0.1 proto=1 primitives=26
 > help
-< ok primitives=help,describe,cpu.vendor,cpu.features,mem.query,mem.read,mem.read8,mem.read16,mem.read32,rtc.now,ticks.since_boot,io.in,pci.scan,pci.config.read,pci.config.read8,pci.config.read16,pci.config.read32,pci.cap.list,pci.cap.read,pci.bars,pci.bar.read,pci.mem.read,pci.mem.read8,pci.mem.read16,pci.mem.read32
+< ok primitives=help,describe,cpu.vendor,cpu.features,mem.query,mem.read,mem.read8,mem.read16,mem.read32,mem.read.seg,rtc.now,ticks.since_boot,io.in,pci.scan,pci.config.read,pci.config.read8,pci.config.read16,pci.config.read32,pci.cap.list,pci.cap.read,pci.bars,pci.bar.read,pci.mem.read,pci.mem.read8,pci.mem.read16,pci.mem.read32
 > cpu.vendor
 < ok vendor=GenuineIntel family=6 model=6 stepping=3
 > mem.read addr=7c00 len=16
@@ -78,6 +78,7 @@ See `docs/PROTOCOL.md` for the full wire spec.
 | `mem.read8`        | `addr=H(1-4)`               | `addr=H width=8 value=HH`                       |
 | `mem.read16`       | `addr=H(1-4,aligned)`       | `addr=H width=16 value=HHHH`                    |
 | `mem.read32`       | `addr=H(1-4,aligned)`       | `addr=H width=32 value=HHHHHHHH`                |
+| `mem.read.seg`     | `seg=H offset=H len=N(1-256)` | `seg=H offset=H len=N data=HEX`               |
 | `rtc.now`          | none                        | `iso=YYYY-MM-DDTHH:MM:SS`                       |
 | `ticks.since_boot` | none                        | `ms=N`                                          |
 | `io.in`            | `port=H`                    | `port=H value=H` or `err code=denied`           |
@@ -100,6 +101,11 @@ siblings, `mem.read8`, `mem.read16`, and `mem.read32`, return a decoded
 little-endian `value=` field from the same address space. The 16- and
 32-bit forms require natural alignment and do not cross beyond offset
 `ffff`.
+
+`mem.read.seg` is the explicit real-mode form: callers provide `seg` and
+`offset`, and the kernel reads through that segment register without crossing
+past offset `ffff`. This keeps the byte-count cap and read-only discipline,
+while letting a model inspect places like BIOS ROM at `f000:fff0`.
 
 `io.in`'s allowlist is introspectable: `describe io.in` includes the full
 list. At the moment it covers the PIC (0x20, 0x21), PIT (0x40, 0x43),
@@ -204,7 +210,7 @@ Empty line to quit.
 python3 demo/bridge.py script demo/transcripts/01_cold_discovery.llmos
 ```
 
-The repo ships with thirteen transcripts - the thirteen demo beats described
+The repo ships with fourteen transcripts - the fourteen demo beats described
 below.
 
 ### Let Claude drive
@@ -218,7 +224,7 @@ The bridge hands Claude the boot banner and a tight system prompt, then
 lets it issue one command per turn. It runs until Claude emits `DONE` or
 the step limit is hit (default 20).
 
-## The demo, in thirteen beats
+## The demo, in fourteen beats
 
 **Beat 1 — Cold discovery.** Claude is told nothing about llmos except that
 `help` exists. It walks the introspection graph — `help`, then `describe`
@@ -341,18 +347,26 @@ and get structured alignment/range errors.
 
 Transcript: `demo/transcripts/13_typed_memory_reads.llmos`.
 
-Recorded outputs for all thirteen live in `demo/recordings/`.
+**Beat 14 - Segment memory reads.** Task: *read the BIOS reset vector*.
+Claude uses `mem.read.seg` to move beyond segment 0 without opening writes
+or unbounded physical addressing. The demo compares `0000:7c00` with
+`mem.read`, then reads the ROM bytes at `f000:fff0` and exercises the
+offset-boundary and malformed-argument paths.
+
+Transcript: `demo/transcripts/14_segment_memory_reads.llmos`.
+
+Recorded outputs for all fourteen live in `demo/recordings/`.
 
 ## Layout
 
 ```
 src/
   boot.asm          512 B — reset-and-retry MBR
-  kernel.asm        ~13 KB - protocol loop, twenty-five primitives, VGA mirror
+  kernel.asm        ~14 KB - protocol loop, twenty-six primitives, VGA mirror
 Makefile            nasm, size-asserted
 demo/
   bridge.py         repl / script / ai modes over QEMU -serial stdio
-  transcripts/*.llmos  the thirteen demo beats, as replayable scripts
+  transcripts/*.llmos  the fourteen demo beats, as replayable scripts
   recordings/*.txt  captured outputs of each transcript
 docs/
   PROTOCOL.md       wire spec
@@ -373,8 +387,9 @@ docs/
 
 - Single CPU, real mode only. PC/AT-compatible BIOS required. UEFI-only
   machines will refuse to boot it.
-- `mem.read` reaches only the first 64 KB (segment 0 offset). No
-  segment-switching primitive yet.
+- `mem.read` reaches only the first 64 KB (segment 0 offset). `mem.read.seg`
+  exposes other real-mode segments for bounded reads, but still has no
+  writes or typed segment reads.
 - `io.out` is deliberately absent in v0.1 — the allowlist for writes wants
   more design thought than reads.
 - `pci.bar.read` and `pci.mem.read` both use small bounded reads.

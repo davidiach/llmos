@@ -21,6 +21,7 @@
 ;     mem.query                conventional + extended memory from BIOS
 ;     mem.read addr=H len=N    hex-encoded memory bytes (max 256)
 ;     mem.read{8,16,32} ...    read a typed value from low memory
+;     mem.read.seg ...         read bytes from a real-mode segment:offset
 ;     rtc.now                  RTC date+time as ISO-ish
 ;     ticks.since_boot         BIOS ticks since boot, in ms
 ;     io.in port=H             8-bit port read (allowlisted)
@@ -137,6 +138,7 @@ cmd_table:
     dw  cmd_mem_read8,  h_mem_read8
     dw  cmd_mem_read16, h_mem_read16
     dw  cmd_mem_read32, h_mem_read32
+    dw  cmd_mem_read_seg, h_mem_read_seg
     dw  cmd_rtc_now,    h_rtc_now
     dw  cmd_ticks,      h_ticks
     dw  cmd_io_in,      h_io_in
@@ -451,6 +453,79 @@ h_mem_read_typed:
     ret
 .range:
     mov     si, err_mem_typed_range
+    call    respond
+    ret
+
+; ---- mem.read.seg seg=H offset=H len=N ------------------------------------
+;   Bounded byte reads from an explicit real-mode segment:offset.
+h_mem_read_seg:
+    mov     si, [arg_ptr]
+    test    si, si
+    jz      .usage
+    mov     di, key_seg
+    call    find_kv_hex
+    jc      .usage
+    mov     [mem_seg], ax
+
+    mov     si, [arg_ptr]
+    mov     di, key_offset
+    call    find_kv_hex
+    jc      .usage
+    mov     [mem_addr], ax
+
+    mov     si, [arg_ptr]
+    mov     di, key_len
+    call    find_kv_dec
+    jc      .usage
+    cmp     ax, 256
+    ja      .range
+    test    ax, ax
+    jz      .range
+    mov     [mem_len], ax
+
+    dec     ax
+    mov     bx, [mem_addr]
+    add     bx, ax
+    jc      .range
+
+    ; Response: ok seg=HHHH offset=HHHH len=N data=HEXHEX...
+    mov     si, resp_ok_prefix
+    call    serial_puts_only
+    mov     si, resp_seg_kw
+    call    serial_puts_only
+    mov     ax, [mem_seg]
+    call    serial_put_hex_word
+    mov     si, resp_offset_kw
+    call    serial_puts_only
+    mov     ax, [mem_addr]
+    call    serial_put_hex_word
+    mov     si, resp_len_kw
+    call    serial_puts_only
+    mov     ax, [mem_len]
+    call    serial_put_udec
+    mov     si, resp_data_kw
+    call    serial_puts_only
+
+    push    es
+    mov     ax, [mem_seg]
+    mov     es, ax
+    mov     cx, [mem_len]
+    mov     bx, [mem_addr]
+    xor     di, di
+.dump:
+    mov     al, [es:bx+di]
+    call    serial_put_hex_byte
+    inc     di
+    loop    .dump
+    pop     es
+    call    respond_end
+    ret
+.usage:
+    mov     si, err_mem_read_seg_usage
+    call    respond
+    ret
+.range:
+    mov     si, err_mem_read_seg_range
     call    respond
     ret
 
@@ -2737,7 +2812,7 @@ vga_banner:
     db '|  COM1 115200 8N1 - LLM driven   |', 13, 10
     db '+---------------------------------+', 13, 10, 13, 10, 0
 
-ready_msg:      db '# llmos v0.1 proto=1 primitives=25', 13, 10, 0
+ready_msg:      db '# llmos v0.1 proto=1 primitives=26', 13, 10, 0
 
 ; Command names (NUL-terminated)
 cmd_help:       db 'help', 0
@@ -2749,6 +2824,7 @@ cmd_mem_read:   db 'mem.read', 0
 cmd_mem_read8:  db 'mem.read8', 0
 cmd_mem_read16: db 'mem.read16', 0
 cmd_mem_read32: db 'mem.read32', 0
+cmd_mem_read_seg: db 'mem.read.seg', 0
 cmd_rtc_now:    db 'rtc.now', 0
 cmd_ticks:      db 'ticks.since_boot', 0
 cmd_io_in:      db 'io.in', 0
@@ -2768,6 +2844,7 @@ cmd_pci_mem_read32: db 'pci.mem.read32', 0
 
 ; Argument key strings
 key_addr:       db 'addr', 0
+key_seg:        db 'seg', 0
 key_len:        db 'len', 0
 key_port:       db 'port', 0
 key_bdf:        db 'bdf', 0
@@ -2786,6 +2863,7 @@ resp_conv_kb:       db ' conv_kb=', 0
 resp_ext_kb:        db ' ext_kb=', 0
 resp_ext_blocks:    db ' ext_blocks_64k=', 0
 resp_addr_kw:       db ' addr=', 0
+resp_seg_kw:        db ' seg=', 0
 resp_len_kw:        db ' len=', 0
 resp_data_kw:       db ' data=', 0
 resp_iso_kw:        db ' iso=', 0
@@ -2838,6 +2916,10 @@ err_mem_read32_usage:
     db 'err code=bad_arg detail="usage: mem.read32 addr=HHHH"', 0
 err_mem_typed_range:
     db 'err code=out_of_range detail="addr or alignment out of range"', 0
+err_mem_read_seg_usage:
+    db 'err code=bad_arg detail="usage: mem.read.seg seg=HHHH offset=HHHH len=N"', 0
+err_mem_read_seg_range:
+    db 'err code=out_of_range detail="offset or len out of range"', 0
 err_rtc:
     db 'err code=unavailable detail="RTC read failed"', 0
 err_io_denied:
@@ -2897,7 +2979,7 @@ err_pci_mem_typed_range:
 
 ; Help response (full line).
 help_response:
-    db 'ok primitives=help,describe,cpu.vendor,cpu.features,mem.query,mem.read,mem.read8,mem.read16,mem.read32,rtc.now,ticks.since_boot,io.in,pci.scan,pci.config.read,pci.config.read8,pci.config.read16,pci.config.read32,pci.cap.list,pci.cap.read,pci.bars,pci.bar.read,pci.mem.read,pci.mem.read8,pci.mem.read16,pci.mem.read32', 0
+    db 'ok primitives=help,describe,cpu.vendor,cpu.features,mem.query,mem.read,mem.read8,mem.read16,mem.read32,mem.read.seg,rtc.now,ticks.since_boot,io.in,pci.scan,pci.config.read,pci.config.read8,pci.config.read16,pci.config.read32,pci.cap.list,pci.cap.read,pci.bars,pci.bar.read,pci.mem.read,pci.mem.read8,pci.mem.read16,pci.mem.read32', 0
 
 ; Schema table: (name_ptr, schema_line_ptr). NULL-terminated.
 schema_table:
@@ -2910,6 +2992,7 @@ schema_table:
     dw  cmd_mem_read8,  sch_mem_read8
     dw  cmd_mem_read16, sch_mem_read16
     dw  cmd_mem_read32, sch_mem_read32
+    dw  cmd_mem_read_seg, sch_mem_read_seg
     dw  cmd_rtc_now,    sch_rtc_now
     dw  cmd_ticks,      sch_ticks
     dw  cmd_io_in,      sch_io_in
@@ -2937,6 +3020,7 @@ sch_mem_read:   db 'ok name=mem.read args="addr=H(1-4) len=N(1-256)" returns="ad
 sch_mem_read8:  db 'ok name=mem.read8 args="addr=H(1-4)" returns="addr=H width=8 value=HH" notes="reads one byte from segment 0"', 0
 sch_mem_read16: db 'ok name=mem.read16 args="addr=H(1-4,aligned)" returns="addr=H width=16 value=HHHH" notes="reads one little-endian aligned word from segment 0"', 0
 sch_mem_read32: db 'ok name=mem.read32 args="addr=H(1-4,aligned)" returns="addr=H width=32 value=HHHHHHHH" notes="reads one little-endian aligned dword from segment 0"', 0
+sch_mem_read_seg: db 'ok name=mem.read.seg args="seg=H(0-ffff) offset=H(0-ffff) len=N(1-256)" returns="seg=H offset=H len=N data=HEX" notes="reads bytes through a real-mode segment:offset; range may not cross offset ffff"', 0
 sch_rtc_now:    db 'ok name=rtc.now args=none returns="iso=YYYY-MM-DDTHH:MM:SS"', 0
 sch_ticks:      db 'ok name=ticks.since_boot args=none returns="ms=N"', 0
 sch_io_in:      db 'ok name=io.in args="port=H" returns="port=H value=H" allowlist=0x20,0x21,0x40,0x43,0x60,0x61,0x64,0x70,0x71', 0
@@ -3043,6 +3127,7 @@ cpu_vbuf:       times 13 db 0
 cpu_sig:        dd 0
 boot_ticks:     dd 0
 mem_addr:       dw 0
+mem_seg:        dw 0
 mem_len:        dw 0
 mem_width_bits: dw 0
 mem_width_bytes: dw 0
