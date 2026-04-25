@@ -1,0 +1,14 @@
+# # llmos v0.1 proto=1 primitives=29
+# =============================================================================
+# Beat 18: describe separates malformed calls from unknown names
+#
+# A caller that adds tokens after NAME made a malformed describe request. That
+# should return bad_arg, while a single well-formed but absent primitive name
+# should keep the unknown_cmd result.
+# =============================================================================
+> describe help
+< ok name=help args=none returns=primitives=CSV
+> describe help x=1
+< err code=bad_arg detail="usage: describe NAME"
+> describe no.such
+< err code=unknown_cmd detail="no such primitive"

@@ -203,6 +203,15 @@ h_describe:
     mov     si, [arg_ptr]
     test    si, si
     jz      .nousage
+    mov     bx, si
+.name_loop:
+    cmp     byte [bx], 0
+    je      .name_ok
+    cmp     byte [bx], ' '
+    je      .nousage
+    inc     bx
+    jmp     .name_loop
+.name_ok:
     mov     bx, schema_table
 .loop:
     mov     di, [bx]

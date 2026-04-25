@@ -40,6 +40,10 @@ executing a truncated prefix.
 Primitives whose schema says `args=none` reject any argument string with
 `err code=bad_arg detail="unexpected arguments"`.
 
+`describe` accepts exactly one primitive name token. Extra tokens return
+`err code=bad_arg detail="usage: describe NAME"`; a single unknown name
+returns `err code=unknown_cmd detail="no such primitive"`.
+
 Examples:
 ```
 help

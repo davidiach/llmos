@@ -216,7 +216,7 @@ Empty line to quit.
 python3 demo/bridge.py script demo/transcripts/01_cold_discovery.llmos
 ```
 
-The repo ships with fifteen transcripts - the fifteen demo beats described
+The repo ships with eighteen transcripts - the eighteen demo beats described
 below.
 
 ### Let Claude drive
@@ -230,7 +230,7 @@ The bridge hands Claude the boot banner and a tight system prompt, then
 lets it issue one command per turn. It runs until Claude emits `DONE` or
 the step limit is hit (default 20).
 
-## The demo, in fifteen beats
+## The demo, in eighteen beats
 
 **Beat 1 — Cold discovery.** Claude is told nothing about llmos except that
 `help` exists. It walks the introspection graph — `help`, then `describe`
@@ -370,7 +370,27 @@ alignment/cross-segment errors structured.
 
 Transcript: `demo/transcripts/15_typed_segment_memory_reads.llmos`.
 
-Recorded outputs for all fifteen live in `demo/recordings/`.
+**Beat 16 - Request line length.** Task: *prove overlong requests do not
+execute a truncated prefix*. The transcript sends a request longer than the
+kernel input buffer and verifies that the kernel returns `bad_arg` instead
+of silently running the valid-looking command prefix.
+
+Transcript: `demo/transcripts/16_line_length.llmos`.
+
+**Beat 17 - No-argument validation.** Task: *treat `args=none` as a real
+contract*. The transcript sends extra arguments to no-argument primitives
+and verifies that each one returns a structured `bad_arg` response.
+
+Transcript: `demo/transcripts/17_no_arg_validation.llmos`.
+
+**Beat 18 - Describe argument validation.** Task: *keep malformed
+introspection calls distinct from unknown primitive names*. The transcript
+checks that `describe help x=1` returns `bad_arg`, while `describe no.such`
+still returns `unknown_cmd`.
+
+Transcript: `demo/transcripts/18_describe_arg_validation.llmos`.
+
+Recorded outputs for all eighteen live in `demo/recordings/`.
 
 ## Layout
 
@@ -381,7 +401,7 @@ src/
 Makefile            nasm, size-asserted
 demo/
   bridge.py         repl / script / ai modes over QEMU -serial stdio
-  transcripts/*.llmos  the fifteen demo beats, as replayable scripts
+  transcripts/*.llmos  the eighteen demo beats, as replayable scripts
   recordings/*.txt  captured outputs of each transcript
 docs/
   PROTOCOL.md       wire spec
