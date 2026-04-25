@@ -24,9 +24,9 @@ The model bootstraps its understanding of the machine from the inside —
 it composes.
 
 ```
-# llmos v0.1 proto=1 primitives=20
+# llmos v0.1 proto=1 primitives=21
 > help
-< ok primitives=help,describe,cpu.vendor,cpu.features,mem.query,mem.read,rtc.now,ticks.since_boot,io.in,pci.scan,pci.config.read,pci.config.read8,pci.config.read16,pci.config.read32,pci.bars,pci.bar.read,pci.mem.read,pci.mem.read8,pci.mem.read16,pci.mem.read32
+< ok primitives=help,describe,cpu.vendor,cpu.features,mem.query,mem.read,rtc.now,ticks.since_boot,io.in,pci.scan,pci.config.read,pci.config.read8,pci.config.read16,pci.config.read32,pci.cap.list,pci.bars,pci.bar.read,pci.mem.read,pci.mem.read8,pci.mem.read16,pci.mem.read32
 > cpu.vendor
 < ok vendor=GenuineIntel family=6 model=6 stepping=3
 > mem.read addr=7c00 len=16
@@ -83,6 +83,7 @@ See `docs/PROTOCOL.md` for the full wire spec.
 | `pci.config.read8` | `bdf=BB.DD.F offset=H`      | `bdf=BB.DD.F offset=H width=8 value=HH`         |
 | `pci.config.read16` | `bdf=BB.DD.F offset=H(aligned)` | `bdf=BB.DD.F offset=H width=16 value=HHHH` |
 | `pci.config.read32` | `bdf=BB.DD.F offset=H(aligned)` | `bdf=BB.DD.F offset=H width=32 value=HHHHHHHH` |
+| `pci.cap.list`     | `bdf=BB.DD.F`               | `bdf=BB.DD.F caps=OFF:ID[,..] truncated=N malformed=N` |
 | `pci.bars`         | `bdf=BB.DD.F`               | `bdf=BB.DD.F bars=I:KIND[:BASE[:p\|n]],...`     |
 | `pci.bar.read`     | `bdf=BB.DD.F bar=N offset=H len=N(1-16)` | `bdf=BB.DD.F bar=N kind=io port=H offset=H len=N data=HEX` |
 | `pci.mem.read`     | `bdf=BB.DD.F bar=N offset=H len=N(1-16)` | `bdf=BB.DD.F bar=N kind=m32\|m64\|mlt1 addr=H offset=H len=N data=HEX` |
@@ -113,6 +114,12 @@ return `out_of_range`.
 config-space siblings. They keep the same BDF plus offset shape, but return
 a decoded little-endian `value=` field. The 16- and 32-bit forms require
 natural alignment.
+
+`pci.cap.list` follows the conventional PCI capability linked list when a
+function advertises one. It returns `caps=OFF:ID,...`, where `OFF` is the
+config-space offset and `ID` is the capability id byte, plus `truncated` and
+`malformed` flags so odd device chains remain structured instead of hanging
+the protocol.
 
 `pci.bars` takes one of those `BB.DD.F` tuples back and decodes the
 function's Base Address Registers. Each record is `I:KIND[:BASE[:p|n]]`
@@ -182,7 +189,7 @@ Empty line to quit.
 python3 demo/bridge.py script demo/transcripts/01_cold_discovery.llmos
 ```
 
-The repo ships with ten transcripts - the ten demo beats described
+The repo ships with eleven transcripts - the eleven demo beats described
 below.
 
 ### Let Claude drive
@@ -196,7 +203,7 @@ The bridge hands Claude the boot banner and a tight system prompt, then
 lets it issue one command per turn. It runs until Claude emits `DONE` or
 the step limit is hit (default 20).
 
-## The demo, in ten beats
+## The demo, in eleven beats
 
 **Beat 1 — Cold discovery.** Claude is told nothing about llmos except that
 `help` exists. It walks the introspection graph — `help`, then `describe`
@@ -293,18 +300,27 @@ unaligned-read denial.
 
 Transcript: `demo/transcripts/10_typed_config_reads.llmos`.
 
-Recorded outputs for all ten live in `demo/recordings/`.
+**Beat 11 - PCI capability list.** Task: *list the PCI capabilities a
+device advertises*. Claude uses `pci.cap.list` to ask the kernel to follow
+the conventional capability linked list. QEMU's default devices return
+empty lists, while CI attaches a virtio PCI device to prove non-empty chains
+such as MSI-X and vendor-specific capabilities are decoded as `OFF:ID`
+records.
+
+Transcript: `demo/transcripts/11_capability_list.llmos`.
+
+Recorded outputs for all eleven live in `demo/recordings/`.
 
 ## Layout
 
 ```
 src/
   boot.asm          512 B — reset-and-retry MBR
-  kernel.asm        ~11 KB - protocol loop, twenty primitives, VGA mirror
+  kernel.asm        ~12 KB - protocol loop, twenty-one primitives, VGA mirror
 Makefile            nasm, size-asserted
 demo/
   bridge.py         repl / script / ai modes over QEMU -serial stdio
-  transcripts/*.llmos  the ten demo beats, as replayable scripts
+  transcripts/*.llmos  the eleven demo beats, as replayable scripts
   recordings/*.txt  captured outputs of each transcript
 docs/
   PROTOCOL.md       wire spec

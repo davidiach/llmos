@@ -1,0 +1,27 @@
+# # llmos v0.1 proto=1 primitives=21
+# =============================================================================
+# Beat 11: PCI capability list - following device feature chains
+#
+# Task handed to the model: "List the PCI capabilities a device advertises."
+#
+# Earlier beats read individual config registers. This beat asks the kernel to
+# walk the conventional capability linked list, returning each capability's
+# offset and id without making the model chase next pointers by hand.
+# =============================================================================
+# Rediscover the network device and the capability-list primitive.
+> pci.scan
+< ok devices=00.00.0:8086:1237:06,00.01.0:8086:7000:06,00.01.1:8086:7010:01,00.01.3:8086:7113:06,00.02.0:1234:1111:03,00.03.0:8086:100e:02
+> describe pci.cap.list
+< ok name=pci.cap.list args="bdf=BB.DD.F" returns="bdf=BB.DD.F caps=OFF:ID[,..] truncated=N malformed=N" notes="walks conventional PCI capability list; empty list returns caps=; malformed chains are bounded and flagged"
+# QEMU's default e1000 is old enough to expose no conventional capability
+# chain, which is still a structured answer.
+> pci.cap.list bdf=00.03.0
+< ok bdf=00.03.0 caps= truncated=0 malformed=0
+# The std-vga device is empty too: same shape, no special case for display.
+> pci.cap.list bdf=00.02.0
+< ok bdf=00.02.0 caps= truncated=0 malformed=0
+# Capability listing keeps the same structured errors as other PCI primitives.
+> pci.cap.list bdf=00.1f.0
+< err code=unavailable detail="no such function"
+> pci.cap.list bdf=00.03.0x
+< err code=bad_arg detail="usage: pci.cap.list bdf=BB.DD.F"
