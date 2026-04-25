@@ -1,0 +1,27 @@
+# =============================================================================
+# Beat 15: Typed segment memory reads - BIOS values by real-mode address
+#
+# Task handed to the model: "Read the BIOS reset vector as typed values."
+#
+# The raw segment-memory primitive returns address-order bytes. This beat adds
+# typed siblings that load little-endian 8/16/32-bit values from the same
+# explicit real-mode segment:offset boundary.
+# =============================================================================
+
+# Rediscover the typed segment-memory primitives.
+describe mem.read.seg8
+describe mem.read.seg16
+describe mem.read.seg32
+
+# Read the first four BIOS reset-vector bytes both ways.
+mem.read.seg seg=f000 offset=fff0 len=4
+mem.read.seg8 seg=f000 offset=fff0
+mem.read.seg16 seg=f000 offset=fff0
+mem.read.seg32 seg=f000 offset=fff0
+
+# Multi-byte typed reads require alignment and cannot cross offset ffff.
+mem.read.seg16 seg=f000 offset=fff1
+mem.read.seg32 seg=f000 offset=fffe
+
+# Malformed offset strings are rejected rather than silently truncated.
+mem.read.seg32 seg=f000 offset=fff0x

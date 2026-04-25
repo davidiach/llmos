@@ -50,6 +50,9 @@ jobs:
           grep -q "^< ok name=mem.read16 " /tmp/01_cold_discovery.txt
           grep -q "^< ok name=mem.read32 " /tmp/01_cold_discovery.txt
           grep -q "^< ok name=mem.read.seg " /tmp/01_cold_discovery.txt
+          grep -q "^< ok name=mem.read.seg8 " /tmp/01_cold_discovery.txt
+          grep -q "^< ok name=mem.read.seg16 " /tmp/01_cold_discovery.txt
+          grep -q "^< ok name=mem.read.seg32 " /tmp/01_cold_discovery.txt
           grep -q "^< ok name=pci.config.read " /tmp/01_cold_discovery.txt
           grep -q "^< ok name=pci.config.read8 " /tmp/01_cold_discovery.txt
           grep -q "^< ok name=pci.config.read16 " /tmp/01_cold_discovery.txt
@@ -217,6 +220,20 @@ jobs:
           grep -q '^< err code=out_of_range detail="offset or len out of range"' /tmp/14_segment_memory_reads.txt
           grep -A1 "^> mem\.read\.seg seg=f000 offset=fff0x" /tmp/14_segment_memory_reads.txt \
             | grep -q '^< err code=bad_arg detail="usage: mem.read.seg seg=HHHH offset=HHHH len=N"'
+
+          run_transcript 15_typed_segment_memory_reads
+          # Beat 15: typed segment memory reads - schema first, then the
+          # same BIOS reset-vector bytes decoded as little-endian values.
+          grep -q "^< ok name=mem.read.seg8 " /tmp/15_typed_segment_memory_reads.txt
+          grep -q "^< ok name=mem.read.seg16 " /tmp/15_typed_segment_memory_reads.txt
+          grep -q "^< ok name=mem.read.seg32 " /tmp/15_typed_segment_memory_reads.txt
+          grep -q "^< ok seg=f000 offset=fff0 len=4 data=ea5be000" /tmp/15_typed_segment_memory_reads.txt
+          grep -q "^< ok seg=f000 offset=fff0 width=8 value=ea" /tmp/15_typed_segment_memory_reads.txt
+          grep -q "^< ok seg=f000 offset=fff0 width=16 value=5bea" /tmp/15_typed_segment_memory_reads.txt
+          grep -q "^< ok seg=f000 offset=fff0 width=32 value=00e05bea" /tmp/15_typed_segment_memory_reads.txt
+          grep -q '^< err code=out_of_range detail="offset or alignment out of range"' /tmp/15_typed_segment_memory_reads.txt
+          grep -A1 "^> mem\.read\.seg32 seg=f000 offset=fff0x" /tmp/15_typed_segment_memory_reads.txt \
+            | grep -q '^< err code=bad_arg detail="usage: mem.read.seg32 seg=HHHH offset=HHHH"'
 
           # Capability-chain regression: attach a virtio PCI function because
           # the default i440FX devices expose no conventional capability list.

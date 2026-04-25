@@ -77,7 +77,7 @@ Error codes in v1:
 On reset, the kernel sets up serial and emits:
 
 ```
-# llmos v0.1 proto=1 primitives=26
+# llmos v0.1 proto=1 primitives=29
 ```
 
 A bridge MUST wait for a line whose first character is `#` before sending
@@ -155,6 +155,33 @@ ok seg=HHHH offset=HHHH len=N data=HEX
 cross the end of the segment return
 `err code=out_of_range detail="offset or len out of range"`. Malformed or
 missing arguments return `bad_arg`.
+
+## Typed segment memory reads
+
+`mem.read.seg8`, `mem.read.seg16`, and `mem.read.seg32` read one
+little-endian value through an explicit real-mode segment:offset pair. They
+use the same segment boundary as `mem.read.seg`, but return a decoded
+`value=` field instead of an address-order byte string.
+
+Arguments:
+
+- `seg` - real-mode segment value (`0`-`ffff`)
+- `offset` - offset within that segment (`0`-`ffff`); `seg16` and `seg32`
+  require natural alignment
+
+The responses are:
+
+```
+ok seg=HHHH offset=HHHH width=8 value=HH
+ok seg=HHHH offset=HHHH width=16 value=HHHH
+ok seg=HHHH offset=HHHH width=32 value=HHHHHHHH
+```
+
+For `mem.read.seg16` and `mem.read.seg32`, the hex `value` is the
+little-endian numeric value loaded from memory. Out-of-range offsets, reads
+that would cross past `ffff`, or unaligned multi-byte offsets return
+`err code=out_of_range detail="offset or alignment out of range"`.
+Malformed or missing arguments return `bad_arg`.
 
 ## PCI enumeration
 
