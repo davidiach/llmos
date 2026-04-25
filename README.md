@@ -102,8 +102,8 @@ See `docs/PROTOCOL.md` for the full wire spec.
 `mem.read` exposes low memory as bounded segment-0 byte strings. Its typed
 siblings, `mem.read8`, `mem.read16`, and `mem.read32`, return a decoded
 little-endian `value=` field from the same address space. The 16- and
-32-bit forms require natural alignment and do not cross beyond offset
-`ffff`.
+32-bit forms require natural alignment; all segment-0 memory reads stay
+within offset `ffff`.
 
 `mem.read.seg` is the explicit real-mode form: callers provide `seg` and
 `offset`, and the kernel reads through that segment register without crossing
