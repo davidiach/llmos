@@ -211,6 +211,8 @@ jobs:
           grep -q "^< ok name=mem.read16 " /tmp/13_typed_memory_reads.txt
           grep -q "^< ok name=mem.read32 " /tmp/13_typed_memory_reads.txt
           grep -q "^< ok addr=7c00 len=4 data=fa31c08e" /tmp/13_typed_memory_reads.txt
+          grep -A1 "^> mem\.read addr=7c00 len=000004" /tmp/13_typed_memory_reads.txt \
+            | grep -q "^< ok addr=7c00 len=4 data=fa31c08e"
           grep -q "^< ok addr=7c00 width=8 value=fa" /tmp/13_typed_memory_reads.txt
           grep -q "^< ok addr=7c00 width=16 value=31fa" /tmp/13_typed_memory_reads.txt
           grep -q "^< ok addr=7c00 width=32 value=8ec031fa" /tmp/13_typed_memory_reads.txt

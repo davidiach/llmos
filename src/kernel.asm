@@ -329,7 +329,7 @@ h_mem_query:
 
 ; ---- mem.read addr=H len=N ------------------------------------------------
 ;   addr: 1-4 hex digits, segment 0 offset
-;   len:  1-3 decimal digits, capped at 256
+;   len:  decimal, capped at 256
 h_mem_read:
     mov     si, [arg_ptr]
     test    si, si
@@ -2866,7 +2866,8 @@ parse_hex_word:
     pop     bx
     ret
 
-; parse_dec_word: DS:SI -> AX. SI advances. CF=0 on success, CF=1 if no digits.
+; parse_dec_word: DS:SI -> AX. SI advances. CF=0 on success, CF=1 if no
+; digits or the value overflows 16 bits.
 parse_dec_word:
     push    bx
     push    cx
@@ -2894,8 +2895,7 @@ parse_dec_word:
     jc      .overflow
     inc     si
     inc     cx
-    cmp     cx, 5
-    jb      .l
+    jmp     .l
 .e:
     or      cx, cx
     jz      .none
