@@ -77,7 +77,7 @@ Error codes in v1:
 On reset, the kernel sets up serial and emits:
 
 ```
-# llmos v0.1 proto=1 primitives=20
+# llmos v0.1 proto=1 primitives=21
 ```
 
 A bridge MUST wait for a line whose first character is `#` before sending
@@ -191,6 +191,33 @@ value loaded from config space, not the address-order byte string that
 offsets return
 `err code=out_of_range detail="offset or alignment out of range"`. Absent
 functions and malformed BDFs use the same errors as `pci.config.read`.
+
+## PCI capability listing
+
+`pci.cap.list bdf=BB.DD.F` follows a function's conventional PCI
+capability linked list. It first checks status bit 4 at config offset
+`0x06`; if the function does not advertise a capability list, the response
+is still successful with an empty `caps=` field.
+
+The response is:
+
+```
+ok bdf=BB.DD.F caps=OFF:ID[,OFF:ID...] truncated=N malformed=N
+```
+
+`OFF` is the two-digit config-space offset of a capability header, and
+`ID` is the two-digit PCI capability id at that offset. The next pointer is
+not emitted because the kernel has already consumed it to produce the list;
+callers can use `pci.config.read` on an offset if they need capability
+payload bytes.
+
+The walk is bounded to 48 capability headers so cycles cannot hang the
+protocol. `truncated=1` means the bound was reached before a null next
+pointer. `malformed=1` means a non-null pointer landed outside the normal
+conventional capability area. In both cases the response remains a single
+structured `ok` line with whatever records were safely read. Absent
+functions return `err code=unavailable detail="no such function"`;
+malformed BDFs return `bad_arg`.
 
 ## BAR decoding
 

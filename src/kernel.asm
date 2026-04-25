@@ -26,6 +26,7 @@
 ;     pci.scan                 enumerate PCI bus 0 via config ports
 ;     pci.config.read ...      read bytes from a function's config space
 ;     pci.config.read{8,16,32} ... read a typed config-space value
+;     pci.cap.list ...         enumerate a function's PCI capabilities
 ;     pci.bars bdf=BB.DD.F     decode a function's BARs (I/O, mmio32, mmio64)
 ;     pci.bar.read ...         read bytes from an I/O-space BAR
 ;     pci.mem.read ...         read bytes from a memory-space BAR
@@ -139,6 +140,7 @@ cmd_table:
     dw  cmd_pci_config_read8, h_pci_config_read8
     dw  cmd_pci_config_read16, h_pci_config_read16
     dw  cmd_pci_config_read32, h_pci_config_read32
+    dw  cmd_pci_cap_list, h_pci_cap_list
     dw  cmd_pci_bars,   h_pci_bars
     dw  cmd_pci_bar_read, h_pci_bar_read
     dw  cmd_pci_mem_read, h_pci_mem_read
@@ -886,6 +888,145 @@ h_pci_config_read_typed:
     ret
 .usage:
     mov     si, [pci_cfg_usage_ptr]
+    call    respond
+    ret
+
+; ---- pci.cap.list bdf=BB.DD.F ---------------------------------------------
+;   Walk the conventional PCI capability linked list for a function.
+;
+;   Response:
+;     ok bdf=BB.DD.F caps=OO:II[,OO:II...] truncated=N malformed=N
+;       OO = capability offset, II = capability id.
+h_pci_cap_list:
+    mov     si, [arg_ptr]
+    test    si, si
+    jz      .usage
+    mov     di, key_bdf
+    call    find_kv
+    jc      .usage
+    call    parse_bdf
+    jc      .usage
+
+    ; Probe presence via vendor id at config offset 0x00.
+    xor     al, al
+    call    pci_config_read_dword
+    cmp     ax, 0xFFFF
+    je      .absent
+
+    mov     byte [pci_cap_truncated], 0
+    mov     byte [pci_cap_malformed], 0
+
+    ; Status bit 4 says whether the conventional capability list exists.
+    mov     al, 0x04
+    call    pci_config_read_dword
+    shr     eax, 16
+    test    ax, 0x0010
+    jz      .no_caps
+
+    ; Header types 0 and 1 put the first capability pointer at 0x34.
+    ; CardBus (type 2) uses 0x14; other header types are treated as empty.
+    mov     al, 0x0C
+    call    pci_config_read_dword
+    shr     eax, 16
+    and     al, 0x7F
+    cmp     al, 0x02
+    je      .ptr14
+    cmp     al, 0x01
+    jbe     .ptr34
+    jmp     .no_caps
+.ptr34:
+    mov     al, 0x34
+    call    pci_config_read_dword
+    jmp     .got_ptr
+.ptr14:
+    mov     al, 0x14
+    call    pci_config_read_dword
+.got_ptr:
+    mov     bl, al
+    test    bl, bl
+    jz      .no_caps
+    and     bl, 0xFC
+    cmp     bl, 0x40
+    jae     .store_ptr
+    mov     byte [pci_cap_malformed], 1
+    mov     bl, 0
+.store_ptr:
+    mov     [pci_cap_ptr], bl
+    jmp     .emit_prefix
+.no_caps:
+    mov     byte [pci_cap_ptr], 0
+
+.emit_prefix:
+    ; "ok bdf=BB.DD.F caps=..."
+    mov     si, resp_ok_prefix
+    call    serial_puts_only
+    mov     si, resp_bdf_kw
+    call    serial_puts_only
+    call    emit_pci_bdf
+    mov     si, resp_caps_kw
+    call    serial_puts_only
+
+    cmp     byte [pci_cap_ptr], 0
+    je      .done_caps
+
+    mov     byte [pci_first], 1
+    mov     cx, 48                  ; hard stop against cycles or bad chains
+.cap_loop:
+    mov     al, [pci_cap_ptr]
+    cmp     al, 0x40
+    jb      .malformed
+    cmp     al, 0xFC
+    ja      .malformed
+
+    call    pci_config_read_dword
+    mov     [pci_cap_id], al
+    mov     bl, ah                  ; next capability pointer
+
+    cmp     byte [pci_first], 1
+    jne     .comma
+    mov     byte [pci_first], 0
+    jmp     .emit_cap
+.comma:
+    mov     al, ','
+    call    serial_putc
+.emit_cap:
+    mov     al, [pci_cap_ptr]
+    call    serial_put_hex_byte
+    mov     al, ':'
+    call    serial_putc
+    mov     al, [pci_cap_id]
+    call    serial_put_hex_byte
+
+    test    bl, bl
+    jz      .done_caps
+    and     bl, 0xFC
+    cmp     bl, 0x40
+    jb      .malformed
+    mov     [pci_cap_ptr], bl
+    loop    .cap_loop
+    mov     byte [pci_cap_truncated], 1
+    jmp     .done_caps
+.malformed:
+    mov     byte [pci_cap_malformed], 1
+.done_caps:
+    mov     si, resp_truncated_kw
+    call    serial_puts_only
+    xor     ah, ah
+    mov     al, [pci_cap_truncated]
+    call    serial_put_udec
+    mov     si, resp_malformed_kw
+    call    serial_puts_only
+    xor     ah, ah
+    mov     al, [pci_cap_malformed]
+    call    serial_put_udec
+    call    respond_end
+    ret
+.absent:
+    mov     si, err_pci_absent
+    call    respond
+    ret
+.usage:
+    mov     si, err_pci_cap_list_usage
     call    respond
     ret
 
@@ -2316,7 +2457,7 @@ vga_banner:
     db '|  COM1 115200 8N1 - LLM driven   |', 13, 10
     db '+---------------------------------+', 13, 10, 13, 10, 0
 
-ready_msg:      db '# llmos v0.1 proto=1 primitives=20', 13, 10, 0
+ready_msg:      db '# llmos v0.1 proto=1 primitives=21', 13, 10, 0
 
 ; Command names (NUL-terminated)
 cmd_help:       db 'help', 0
@@ -2333,6 +2474,7 @@ cmd_pci_config_read: db 'pci.config.read', 0
 cmd_pci_config_read8: db 'pci.config.read8', 0
 cmd_pci_config_read16: db 'pci.config.read16', 0
 cmd_pci_config_read32: db 'pci.config.read32', 0
+cmd_pci_cap_list: db 'pci.cap.list', 0
 cmd_pci_bars:   db 'pci.bars', 0
 cmd_pci_bar_read: db 'pci.bar.read', 0
 cmd_pci_mem_read: db 'pci.mem.read', 0
@@ -2373,6 +2515,9 @@ resp_offset_kw:     db ' offset=', 0
 resp_kind_kw:       db ' kind=', 0
 resp_kind_io_kw:    db ' kind=io', 0
 resp_width_kw:      db ' width=', 0
+resp_caps_kw:       db ' caps=', 0
+resp_truncated_kw:  db ' truncated=', 0
+resp_malformed_kw:  db ' malformed=', 0
 
 ; pci.bars record-kind prefixes (each includes the trailing ':' separator so
 ; the base-address hex can be appended directly).
@@ -2418,6 +2563,8 @@ err_pci_config_range:
     db 'err code=out_of_range detail="offset or len out of range"', 0
 err_pci_config_typed_range:
     db 'err code=out_of_range detail="offset or alignment out of range"', 0
+err_pci_cap_list_usage:
+    db 'err code=bad_arg detail="usage: pci.cap.list bdf=BB.DD.F"', 0
 err_pci_bar_read_usage:
     db 'err code=bad_arg detail="usage: pci.bar.read bdf=BB.DD.F bar=N offset=HHHH len=N"', 0
 err_pci_mem_read_usage:
@@ -2449,7 +2596,7 @@ err_pci_mem_typed_range:
 
 ; Help response (full line).
 help_response:
-    db 'ok primitives=help,describe,cpu.vendor,cpu.features,mem.query,mem.read,rtc.now,ticks.since_boot,io.in,pci.scan,pci.config.read,pci.config.read8,pci.config.read16,pci.config.read32,pci.bars,pci.bar.read,pci.mem.read,pci.mem.read8,pci.mem.read16,pci.mem.read32', 0
+    db 'ok primitives=help,describe,cpu.vendor,cpu.features,mem.query,mem.read,rtc.now,ticks.since_boot,io.in,pci.scan,pci.config.read,pci.config.read8,pci.config.read16,pci.config.read32,pci.cap.list,pci.bars,pci.bar.read,pci.mem.read,pci.mem.read8,pci.mem.read16,pci.mem.read32', 0
 
 ; Schema table: (name_ptr, schema_line_ptr). NULL-terminated.
 schema_table:
@@ -2467,6 +2614,7 @@ schema_table:
     dw  cmd_pci_config_read8, sch_pci_config_read8
     dw  cmd_pci_config_read16, sch_pci_config_read16
     dw  cmd_pci_config_read32, sch_pci_config_read32
+    dw  cmd_pci_cap_list, sch_pci_cap_list
     dw  cmd_pci_bars,   sch_pci_bars
     dw  cmd_pci_bar_read, sch_pci_bar_read
     dw  cmd_pci_mem_read, sch_pci_mem_read
@@ -2489,6 +2637,7 @@ sch_pci_config_read: db 'ok name=pci.config.read args="bdf=BB.DD.F offset=H(0-ff
 sch_pci_config_read8: db 'ok name=pci.config.read8 args="bdf=BB.DD.F offset=H(0-ff)" returns="bdf=BB.DD.F offset=H width=8 value=HH" notes="reads one little-endian byte from PCI config space"', 0
 sch_pci_config_read16: db 'ok name=pci.config.read16 args="bdf=BB.DD.F offset=H(0-ff,aligned)" returns="bdf=BB.DD.F offset=H width=16 value=HHHH" notes="reads one little-endian aligned word from PCI config space"', 0
 sch_pci_config_read32: db 'ok name=pci.config.read32 args="bdf=BB.DD.F offset=H(0-ff,aligned)" returns="bdf=BB.DD.F offset=H width=32 value=HHHHHHHH" notes="reads one little-endian aligned dword from PCI config space"', 0
+sch_pci_cap_list: db 'ok name=pci.cap.list args="bdf=BB.DD.F" returns="bdf=BB.DD.F caps=OFF:ID[,..] truncated=N malformed=N" notes="walks conventional PCI capability list; empty list returns caps=; malformed chains are bounded and flagged"', 0
 sch_pci_bars:   db 'ok name=pci.bars args="bdf=BB.DD.F" returns="bdf=BB.DD.F bars=I:KIND[:BASE[:p|n]],..." kinds="none|io:BASE32|m32:BASE32:p|n|m64:BASE64:p|n|m64trunc:BASE32:p|n|mlt1:BASE32:p|n|rsv:BASE32:p|n" slots="6 for header-type 0, 2 for header-type 1, else 0" notes="m64 consumes I+1; m64trunc flags a self-contradictory 64-bit BAR on the last slot; bdf format matches pci.scan"', 0
 sch_pci_bar_read: db 'ok name=pci.bar.read args="bdf=BB.DD.F bar=N offset=H(0-ff) len=N(1-16)" returns="bdf=BB.DD.F bar=N kind=io port=H offset=H len=N data=HEX" notes="reads I/O-space BARs only; memory BARs return denied"', 0
 sch_pci_mem_read: db 'ok name=pci.mem.read args="bdf=BB.DD.F bar=N offset=H(0-ff) len=N(1-16)" returns="bdf=BB.DD.F bar=N kind=m32|m64|mlt1 addr=H offset=H len=N data=HEX" notes="reads memory-space BARs only via flat FS; I/O BARs return denied; 64-bit BARs require high dword zero"', 0
@@ -2599,6 +2748,10 @@ pci_cfg_offset: db 0
 pci_cfg_len:    dw 0
 pci_cfg_width_bits: dw 0
 pci_cfg_usage_ptr: dw 0
+pci_cap_ptr:    db 0
+pci_cap_id:     db 0
+pci_cap_truncated: db 0
+pci_cap_malformed: db 0
 pci_nbars:      db 0
 pci_pref:       db 0
 pci_bar_lo:     dd 0

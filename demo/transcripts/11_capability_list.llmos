@@ -1,0 +1,24 @@
+# =============================================================================
+# Beat 11: PCI capability list - following device feature chains
+#
+# Task handed to the model: "List the PCI capabilities a device advertises."
+#
+# Earlier beats read individual config registers. This beat asks the kernel to
+# walk the conventional capability linked list, returning each capability's
+# offset and id without making the model chase next pointers by hand.
+# =============================================================================
+
+# Rediscover the network device and the capability-list primitive.
+pci.scan
+describe pci.cap.list
+
+# QEMU's default e1000 is old enough to expose no conventional capability
+# chain, which is still a structured answer.
+pci.cap.list bdf=00.03.0
+
+# The std-vga device is empty too: same shape, no special case for display.
+pci.cap.list bdf=00.02.0
+
+# Capability listing keeps the same structured errors as other PCI primitives.
+pci.cap.list bdf=00.1f.0
+pci.cap.list bdf=00.03.0x

@@ -11,8 +11,9 @@ help
 
 # "primitives=help,describe,cpu.vendor,cpu.features,mem.query,mem.read,rtc.now,
 #  ticks.since_boot,io.in,pci.scan,pci.config.read,pci.config.read8,
-#  pci.config.read16,pci.config.read32,pci.bars,pci.bar.read,pci.mem.read,
-#  pci.mem.read8,pci.mem.read16,pci.mem.read32" - twenty primitives.
+#  pci.config.read16,pci.config.read32,pci.cap.list,pci.bars,pci.bar.read,
+#  pci.mem.read,pci.mem.read8,pci.mem.read16,pci.mem.read32" - twenty-one
+#  primitives.
 # Learn each one.
 
 describe help
@@ -29,6 +30,7 @@ describe pci.config.read
 describe pci.config.read8
 describe pci.config.read16
 describe pci.config.read32
+describe pci.cap.list
 describe pci.bars
 describe pci.bar.read
 describe pci.mem.read
@@ -40,12 +42,13 @@ describe pci.mem.read32
 # both cover the newly-advertised primitive.
 pci.scan
 
-# At this point the model knows: the OS has twenty primitives, which ones
+# At this point the model knows: the OS has twenty-one primitives, which ones
 # take arguments and in what format, and what fields each response contains.
 # io.in's schema even leaks its allowlist - the set of ports this machine
 # will let the model touch - and `pci.scan`/`pci.config.read`/
-# `pci.config.read32`/`pci.bars`/`pci.bar.read`/`pci.mem.read`/
-# `pci.mem.read32` together confirm the machine can describe its bus topology,
-# inspect config registers, name each device's windows, and read bytes or typed
-# values through config space plus I/O and memory BARs from the inside.
+# `pci.config.read32`/`pci.cap.list`/`pci.bars`/`pci.bar.read`/
+# `pci.mem.read`/`pci.mem.read32` together confirm the machine can describe
+# its bus topology, inspect config registers and capability chains, name each
+# device's windows, and read bytes or typed values through config space plus
+# I/O and memory BARs from the inside.
 # Everything learned without a manual.
