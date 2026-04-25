@@ -3078,15 +3078,15 @@ err_pci_cap_read_range:
 err_pci_cap_not_found:
     db 'err code=unavailable detail="capability not found"', 0
 err_pci_bar_read_usage:
-    db 'err code=bad_arg detail="usage: pci.bar.read bdf=BB.DD.F bar=N offset=HHHH len=N"', 0
+    db 'err code=bad_arg detail="usage: pci.bar.read bdf=BB.DD.F bar=N offset=HH len=N"', 0
 err_pci_mem_read_usage:
-    db 'err code=bad_arg detail="usage: pci.mem.read bdf=BB.DD.F bar=N offset=HHHH len=N"', 0
+    db 'err code=bad_arg detail="usage: pci.mem.read bdf=BB.DD.F bar=N offset=HH len=N"', 0
 err_pci_mem_read8_usage:
-    db 'err code=bad_arg detail="usage: pci.mem.read8 bdf=BB.DD.F bar=N offset=HHHH"', 0
+    db 'err code=bad_arg detail="usage: pci.mem.read8 bdf=BB.DD.F bar=N offset=HH"', 0
 err_pci_mem_read16_usage:
-    db 'err code=bad_arg detail="usage: pci.mem.read16 bdf=BB.DD.F bar=N offset=HHHH"', 0
+    db 'err code=bad_arg detail="usage: pci.mem.read16 bdf=BB.DD.F bar=N offset=HH"', 0
 err_pci_mem_read32_usage:
-    db 'err code=bad_arg detail="usage: pci.mem.read32 bdf=BB.DD.F bar=N offset=HHHH"', 0
+    db 'err code=bad_arg detail="usage: pci.mem.read32 bdf=BB.DD.F bar=N offset=HH"', 0
 err_pci_absent:
     db 'err code=unavailable detail="no such function"', 0
 err_pci_bar_absent:

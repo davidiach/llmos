@@ -33,4 +33,6 @@ pci.mem.read32 bdf=00.02.0 bar=6 offset=0
 pci.mem.read32 bdf=00.02.0 bar=2 offset=1
 
 # Malformed BDFs still fail before config-space probing.
+pci.mem.read8 bdf=00.02.0x bar=0 offset=0
+pci.mem.read16 bdf=00.02.0x bar=0 offset=0
 pci.mem.read32 bdf=00.02.0x bar=0 offset=0

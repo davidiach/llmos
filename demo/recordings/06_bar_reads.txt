@@ -35,4 +35,4 @@
 < err code=out_of_range detail="bar, offset, or len out of range"
 # Malformed BDFs still fail before the kernel touches config space.
 > pci.bar.read bdf=00.02.0x bar=0 offset=0 len=1
-< err code=bad_arg detail="usage: pci.bar.read bdf=BB.DD.F bar=N offset=HHHH len=N"
+< err code=bad_arg detail="usage: pci.bar.read bdf=BB.DD.F bar=N offset=HH len=N"
