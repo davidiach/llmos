@@ -35,3 +35,6 @@
 # Oversized decimal arguments are malformed, not wrapped back into range.
 > mem.read addr=7c00 len=65792
 < err code=bad_arg detail="usage: mem.read addr=HHHH len=N"
+# Raw byte reads stay inside the same segment-0 boundary.
+> mem.read addr=fff0 len=17
+< err code=out_of_range detail="addr or len out of range"

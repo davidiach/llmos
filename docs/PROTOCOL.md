@@ -107,6 +107,9 @@ by asking.
 
 ## Typed low-memory reads
 
+`mem.read addr=H len=N` reads bytes from segment 0. `len` is capped at
+`1`-`256`, and reads may not cross past offset `ffff`.
+
 `mem.read8`, `mem.read16`, and `mem.read32` read one little-endian value
 from segment 0. They use the same low-memory address boundary as
 `mem.read`, but return a decoded `value=` field instead of an address-order

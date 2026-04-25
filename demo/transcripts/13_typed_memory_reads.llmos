@@ -27,3 +27,6 @@ mem.read32 addr=7c00x
 
 # Oversized decimal arguments are malformed, not wrapped back into range.
 mem.read addr=7c00 len=65792
+
+# Raw byte reads stay inside the same segment-0 boundary.
+mem.read addr=fff0 len=17

@@ -347,6 +347,10 @@ h_mem_read:
     test    ax, ax
     jz      .range
     mov     [mem_len], ax
+    dec     ax
+    mov     bx, [mem_addr]
+    add     bx, ax
+    jc      .range
     ; Response: ok addr=HHHH len=N data=HEXHEX...
     mov     si, resp_ok_prefix
     call    serial_puts_only
@@ -3024,7 +3028,7 @@ err_describe_unknown:
 err_mem_read_usage:
     db 'err code=bad_arg detail="usage: mem.read addr=HHHH len=N"', 0
 err_mem_read_range:
-    db 'err code=out_of_range detail="len must be 1..256"', 0
+    db 'err code=out_of_range detail="addr or len out of range"', 0
 err_mem_read8_usage:
     db 'err code=bad_arg detail="usage: mem.read8 addr=HHHH"', 0
 err_mem_read16_usage:
