@@ -72,6 +72,22 @@ jobs:
           grep -q "^< ok vendor=GenuineIntel " /tmp/02_hardware_archaeology.txt
           grep -q "^< ok conv_kb=" /tmp/02_hardware_archaeology.txt
 
+          # CPUID leaf 1 encodes display model through base+extended fields.
+          # Haswell is family 6, model 60; reporting model 12 means the
+          # kernel ignored the extended model nibble.
+          cat > /tmp/cpu_model_probe.llmos <<'EOF'
+          cpu.vendor
+          EOF
+          echo "::group::smoke: cpuid-display-model"
+          timeout 30 python3 demo/bridge.py \
+            --image build/llmos.img \
+            --qemu-arg=-cpu \
+            --qemu-arg=Haswell \
+            script /tmp/cpu_model_probe.llmos \
+            | tee /tmp/cpu_model_probe.txt
+          grep -q "^< ok vendor=GenuineIntel family=6 model=60 stepping=" /tmp/cpu_model_probe.txt
+          echo "::endgroup::"
+
           run_transcript 03_denied_path
           # Beat 3: denial as an interface element — at least one io.in call
           # MUST hit the allowlist and come back with code=denied.

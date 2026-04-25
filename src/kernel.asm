@@ -228,21 +228,49 @@ h_cpu_vendor:
     mov     byte [cpu_vbuf+12], 0
     mov     si, cpu_vbuf
     call    serial_puts_only
-    ; family/model/stepping from leaf 1.
+    ; family/model/stepping from leaf 1. Family/model use CPUID display
+    ; values, including the extended fields where Intel/AMD define them.
     mov     eax, 1
     cpuid
     mov     [cpu_sig], eax
     mov     si, resp_family_kw
     call    serial_puts_only
+    xor     ax, ax
     mov     al, [cpu_sig+1]
+    and     al, 0x0F               ; base family
+    cmp     al, 0x0F
+    jne     .family_ready
+    mov     bx, ax
+    xor     ax, ax
+    mov     al, [cpu_sig+3]
     and     al, 0x0F
-    call    serial_put_dec
+    shl     ax, 4
+    mov     dl, [cpu_sig+2]
+    shr     dl, 4
+    xor     dh, dh
+    or      ax, dx                 ; extended family
+    add     ax, bx
+.family_ready:
+    call    serial_put_udec
     mov     si, resp_model_kw
     call    serial_puts_only
+    xor     ax, ax
     mov     al, [cpu_sig]
-    shr     al, 4
-    xor     ah, ah
-    call    serial_put_dec
+    shr     al, 4                  ; base model
+    mov     bl, [cpu_sig+1]
+    and     bl, 0x0F               ; base family
+    cmp     bl, 0x06
+    je      .extended_model
+    cmp     bl, 0x0F
+    jne     .model_ready
+.extended_model:
+    mov     dl, [cpu_sig+2]
+    and     dl, 0x0F
+    xor     dh, dh
+    shl     dx, 4
+    add     ax, dx
+.model_ready:
+    call    serial_put_udec
     mov     si, resp_stepping_kw
     call    serial_puts_only
     mov     al, [cpu_sig]
