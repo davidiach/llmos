@@ -32,3 +32,6 @@
 < err code=out_of_range detail="addr or alignment out of range"
 > mem.read32 addr=7c00x
 < err code=bad_arg detail="usage: mem.read32 addr=HHHH"
+# Oversized decimal arguments are malformed, not wrapped back into range.
+> mem.read addr=7c00 len=65792
+< err code=bad_arg detail="usage: mem.read addr=HHHH len=N"

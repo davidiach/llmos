@@ -2866,6 +2866,7 @@ parse_hex_word:
 parse_dec_word:
     push    bx
     push    cx
+    push    dx
     xor     bx, bx
     xor     cx, cx
 .l:
@@ -2880,10 +2881,13 @@ parse_dec_word:
     mov     ax, bx
     mov     bx, 10
     mul     bx
+    test    dx, dx
+    jnz     .overflow_pop
     mov     bx, ax
     pop     ax
     xor     ah, ah
     add     bx, ax
+    jc      .overflow
     inc     si
     inc     cx
     cmp     cx, 5
@@ -2893,11 +2897,21 @@ parse_dec_word:
     jz      .none
     mov     ax, bx
     clc
+    pop     dx
     pop     cx
     pop     bx
     ret
 .none:
     stc
+    pop     dx
+    pop     cx
+    pop     bx
+    ret
+.overflow_pop:
+    pop     ax
+.overflow:
+    stc
+    pop     dx
     pop     cx
     pop     bx
     ret

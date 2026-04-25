@@ -24,3 +24,6 @@ mem.read32 addr=7c00
 mem.read16 addr=7c01
 mem.read32 addr=fffe
 mem.read32 addr=7c00x
+
+# Oversized decimal arguments are malformed, not wrapped back into range.
+mem.read addr=7c00 len=65792

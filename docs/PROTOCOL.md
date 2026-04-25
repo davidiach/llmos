@@ -30,7 +30,7 @@ CMD [KEY=VALUE ...]
 `CMD` is a single token (no whitespace). `KEY=VALUE` pairs are
 space-separated and may appear in any order. Values are either unquoted
 tokens (no whitespace), hexadecimal (1–4 digits, case-insensitive), or
-decimal integers.
+unsigned decimal integers that fit in 16 bits.
 
 Examples:
 ```
