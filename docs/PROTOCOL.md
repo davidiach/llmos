@@ -77,7 +77,7 @@ Error codes in v1:
 On reset, the kernel sets up serial and emits:
 
 ```
-# llmos v0.1 proto=1 primitives=16
+# llmos v0.1 proto=1 primitives=17
 ```
 
 A bridge MUST wait for a line whose first character is `#` before sending
@@ -133,6 +133,36 @@ Fields, all lowercase hex, fixed-width:
 Multi-function devices are detected via bit 7 of the header-type byte
 (config offset 0x0E); single-function devices report only function 0.
 An empty scan yields `ok devices=` with no records.
+
+## PCI config-space reads
+
+`pci.config.read bdf=BB.DD.F offset=H len=N` reads bytes from a single
+function's conventional 256-byte PCI config space. It uses the same legacy
+`0xCF8`/`0xCFC` mechanism as `pci.scan` and `pci.bars`, but exposes a
+small bounded byte view for fields that the higher-level summaries do not
+decode yet.
+
+Arguments:
+
+- `bdf` - same `BB.DD.F` tuple emitted by `pci.scan`
+- `offset` - hex byte offset in config space (`0`-`ff`)
+- `len` - number of bytes to read (`1`-`16`), capped so the read does not
+  cross past `0xff`
+
+The response is:
+
+```
+ok bdf=BB.DD.F offset=HH len=N data=HEX
+```
+
+`data` is emitted in address order. For example, vendor/device id at offset
+`0` is returned as the two little-endian id words laid out in config space.
+
+If the function is absent, the response is
+`err code=unavailable detail="no such function"`. Malformed BDFs or missing
+arguments return `bad_arg`. Out-of-range offsets, lengths, or reads that
+would cross past `0xff` return
+`err code=out_of_range detail="offset or len out of range"`.
 
 ## BAR decoding
 

@@ -1,4 +1,4 @@
-# # llmos v0.1 proto=1 primitives=16
+# # llmos v0.1 proto=1 primitives=17
 # =============================================================================
 # Beat 1: Cold discovery
 #
@@ -8,10 +8,10 @@
 # derived entirely from introspection, with zero training data about llmos.
 # =============================================================================
 > help
-< ok primitives=help,describe,cpu.vendor,cpu.features,mem.query,mem.read,rtc.now,ticks.since_boot,io.in,pci.scan,pci.bars,pci.bar.read,pci.mem.read,pci.mem.read8,pci.mem.read16,pci.mem.read32
+< ok primitives=help,describe,cpu.vendor,cpu.features,mem.query,mem.read,rtc.now,ticks.since_boot,io.in,pci.scan,pci.config.read,pci.bars,pci.bar.read,pci.mem.read,pci.mem.read8,pci.mem.read16,pci.mem.read32
 # "primitives=help,describe,cpu.vendor,cpu.features,mem.query,mem.read,rtc.now,
-#  ticks.since_boot,io.in,pci.scan,pci.bars,pci.bar.read,pci.mem.read,
-#  pci.mem.read8,pci.mem.read16,pci.mem.read32" - sixteen primitives.
+#  ticks.since_boot,io.in,pci.scan,pci.config.read,pci.bars,pci.bar.read,
+#  pci.mem.read,pci.mem.read8,pci.mem.read16,pci.mem.read32" - seventeen primitives.
 # Learn each one.
 > describe help
 < ok name=help args=none returns=primitives=CSV
@@ -33,6 +33,8 @@
 < ok name=io.in args="port=H" returns="port=H value=H" allowlist=0x20,0x21,0x40,0x43,0x60,0x61,0x64,0x70,0x71
 > describe pci.scan
 < ok name=pci.scan args=none returns="devices=B.D.F:VVVV:DDDD:CC[,...]" scope="bus 0 + any PCI-to-PCI bridges reachable from it; class = base class byte"
+> describe pci.config.read
+< ok name=pci.config.read args="bdf=BB.DD.F offset=H(0-ff) len=N(1-16)" returns="bdf=BB.DD.F offset=H len=N data=HEX" notes="reads PCI config-space bytes; absent functions return unavailable"
 > describe pci.bars
 < ok name=pci.bars args="bdf=BB.DD.F" returns="bdf=BB.DD.F bars=I:KIND[:BASE[:p|n]],..." kinds="none|io:BASE32|m32:BASE32:p|n|m64:BASE64:p|n|m64trunc:BASE32:p|n|mlt1:BASE32:p|n|rsv:BASE32:p|n" slots="6 for header-type 0, 2 for header-type 1, else 0" notes="m64 consumes I+1; m64trunc flags a self-contradictory 64-bit BAR on the last slot; bdf format matches pci.scan"
 > describe pci.bar.read
@@ -49,11 +51,12 @@
 # both cover the newly-advertised primitive.
 > pci.scan
 < ok devices=00.00.0:8086:1237:06,00.01.0:8086:7000:06,00.01.1:8086:7010:01,00.01.3:8086:7113:06,00.02.0:1234:1111:03,00.03.0:8086:100e:02
-# At this point the model knows: the OS has sixteen primitives, which ones
+# At this point the model knows: the OS has seventeen primitives, which ones
 # take arguments and in what format, and what fields each response contains.
 # io.in's schema even leaks its allowlist - the set of ports this machine
-# will let the model touch - and `pci.scan`/`pci.bars`/`pci.bar.read`/
-# `pci.mem.read`/`pci.mem.read32` together confirm the machine can describe
-# its bus topology, name each device's windows, and read bytes or typed values
-# through I/O and memory BARs from the inside.
+# will let the model touch - and `pci.scan`/`pci.config.read`/`pci.bars`/
+# `pci.bar.read`/`pci.mem.read`/`pci.mem.read32` together confirm the machine
+# can describe its bus topology, inspect config registers, name each device's
+# windows, and read bytes or typed values through I/O and memory BARs from the
+# inside.
 # Everything learned without a manual.

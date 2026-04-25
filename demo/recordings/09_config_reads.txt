@@ -1,0 +1,38 @@
+# # llmos v0.1 proto=1 primitives=17
+# =============================================================================
+# Beat 9: PCI config reads - opening the device header
+#
+# Task handed to the model: "Read raw PCI configuration registers for a
+# device."
+#
+# Earlier beats found devices and decoded their BARs. This beat reads the
+# config-space bytes behind those summaries: vendor/device id, command/status,
+# class code, and a cross-dword slice.
+# =============================================================================
+# Rediscover the display device and the config-space read primitive.
+> pci.scan
+< ok devices=00.00.0:8086:1237:06,00.01.0:8086:7000:06,00.01.1:8086:7010:01,00.01.3:8086:7113:06,00.02.0:1234:1111:03,00.03.0:8086:100e:02
+> describe pci.config.read
+< ok name=pci.config.read args="bdf=BB.DD.F offset=H(0-ff) len=N(1-16)" returns="bdf=BB.DD.F offset=H len=N data=HEX" notes="reads PCI config-space bytes; absent functions return unavailable"
+# Vendor/device id at config offset 0x00. The byte order is address order,
+# so std-vga's 1234:1111 appears as 34121111.
+> pci.config.read bdf=00.02.0 offset=0 len=4
+< ok bdf=00.02.0 offset=00 len=4 data=34121111
+# Command/status at offset 0x04.
+> pci.config.read bdf=00.02.0 offset=4 len=4
+< ok bdf=00.02.0 offset=04 len=4 data=03010000
+# Revision, programming interface, subclass, base class at offset 0x08.
+> pci.config.read bdf=00.02.0 offset=8 len=4
+< ok bdf=00.02.0 offset=08 len=4 data=02000003
+# Reads can cross dword boundaries while staying inside 0x00..0xff.
+> pci.config.read bdf=00.02.0 offset=e len=4
+< ok bdf=00.02.0 offset=0e len=4 data=00000800
+# Absent functions are still unavailable, not all-ones data.
+> pci.config.read bdf=00.1f.0 offset=0 len=4
+< err code=unavailable detail="no such function"
+# Keep config reads bounded to the 256-byte conventional header space.
+> pci.config.read bdf=00.02.0 offset=f8 len=9
+< err code=out_of_range detail="offset or len out of range"
+# Malformed BDFs still fail before config-space probing.
+> pci.config.read bdf=00.02.0x offset=0 len=4
+< err code=bad_arg detail="usage: pci.config.read bdf=BB.DD.F offset=HH len=N"

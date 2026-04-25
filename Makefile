@@ -18,7 +18,7 @@ MAX_KERNEL_BYTES := $(shell expr $(KERNEL_SECTORS) \* 512)
 # For `make run` the serial console is on stdio, and we silence VGA output
 # so the terminal only shows the wire protocol (VGA mirror is still on the
 # QEMU window if you remove -display none).
-QEMU_ARGS  := -drive format=raw,file=$(IMG) -serial stdio -display none
+QEMU_ARGS  := -drive format=raw,if=floppy,file=$(IMG) -serial stdio -display none
 
 .PHONY: all run run-gui debug clean
 
@@ -59,7 +59,7 @@ run: $(IMG)
 
 # Run with VGA visible (separate window) + serial on stdio.
 run-gui: $(IMG)
-	$(QEMU) -drive format=raw,file=$(IMG) -serial stdio
+	$(QEMU) -drive format=raw,if=floppy,file=$(IMG) -serial stdio
 
 debug: $(IMG)
 	$(QEMU) $(QEMU_ARGS) -s -S
