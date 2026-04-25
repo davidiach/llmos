@@ -37,6 +37,9 @@ Request lines are capped at 255 bytes, excluding the trailing CR/LF. Longer
 requests return `err code=bad_arg detail="request line too long"` without
 executing a truncated prefix.
 
+Primitives whose schema says `args=none` reject any argument string with
+`err code=bad_arg detail="unexpected arguments"`.
+
 Examples:
 ```
 help

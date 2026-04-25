@@ -1,0 +1,14 @@
+# =============================================================================
+# Beat 17: No-argument primitives reject extras
+#
+# Schemas that say args=none are part of the contract: a caller that supplies
+# unexpected arguments should get a structured error, not a successful command.
+# =============================================================================
+
+help x=1
+cpu.vendor x=1
+cpu.features x=1
+mem.query x=1
+rtc.now x=1
+ticks.since_boot x=1
+pci.scan x=1
