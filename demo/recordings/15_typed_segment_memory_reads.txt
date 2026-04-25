@@ -1,0 +1,34 @@
+# # llmos v0.1 proto=1 primitives=29
+# =============================================================================
+# Beat 15: Typed segment memory reads - BIOS values by real-mode address
+#
+# Task handed to the model: "Read the BIOS reset vector as typed values."
+#
+# The raw segment-memory primitive returns address-order bytes. This beat adds
+# typed siblings that load little-endian 8/16/32-bit values from the same
+# explicit real-mode segment:offset boundary.
+# =============================================================================
+# Rediscover the typed segment-memory primitives.
+> describe mem.read.seg8
+< ok name=mem.read.seg8 args="seg=H(0-ffff) offset=H(0-ffff)" returns="seg=H offset=H width=8 value=HH" notes="reads one byte through a real-mode segment:offset"
+> describe mem.read.seg16
+< ok name=mem.read.seg16 args="seg=H(0-ffff) offset=H(0-ffff,aligned)" returns="seg=H offset=H width=16 value=HHHH" notes="reads one little-endian aligned word through a real-mode segment:offset"
+> describe mem.read.seg32
+< ok name=mem.read.seg32 args="seg=H(0-ffff) offset=H(0-ffff,aligned)" returns="seg=H offset=H width=32 value=HHHHHHHH" notes="reads one little-endian aligned dword through a real-mode segment:offset"
+# Read the first four BIOS reset-vector bytes both ways.
+> mem.read.seg seg=f000 offset=fff0 len=4
+< ok seg=f000 offset=fff0 len=4 data=ea5be000
+> mem.read.seg8 seg=f000 offset=fff0
+< ok seg=f000 offset=fff0 width=8 value=ea
+> mem.read.seg16 seg=f000 offset=fff0
+< ok seg=f000 offset=fff0 width=16 value=5bea
+> mem.read.seg32 seg=f000 offset=fff0
+< ok seg=f000 offset=fff0 width=32 value=00e05bea
+# Multi-byte typed reads require alignment and cannot cross offset ffff.
+> mem.read.seg16 seg=f000 offset=fff1
+< err code=out_of_range detail="offset or alignment out of range"
+> mem.read.seg32 seg=f000 offset=fffe
+< err code=out_of_range detail="offset or alignment out of range"
+# Malformed offset strings are rejected rather than silently truncated.
+> mem.read.seg32 seg=f000 offset=fff0x
+< err code=bad_arg detail="usage: mem.read.seg32 seg=HHHH offset=HHHH"

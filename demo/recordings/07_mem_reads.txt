@@ -1,4 +1,4 @@
-# # llmos v0.1 proto=1 primitives=26
+# # llmos v0.1 proto=1 primitives=29
 # =============================================================================
 # Beat 7: Memory BAR reads - crossing the real-mode wall
 #

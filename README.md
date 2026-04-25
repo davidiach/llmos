@@ -24,9 +24,9 @@ The model bootstraps its understanding of the machine from the inside —
 it composes.
 
 ```
-# llmos v0.1 proto=1 primitives=26
+# llmos v0.1 proto=1 primitives=29
 > help
-< ok primitives=help,describe,cpu.vendor,cpu.features,mem.query,mem.read,mem.read8,mem.read16,mem.read32,mem.read.seg,rtc.now,ticks.since_boot,io.in,pci.scan,pci.config.read,pci.config.read8,pci.config.read16,pci.config.read32,pci.cap.list,pci.cap.read,pci.bars,pci.bar.read,pci.mem.read,pci.mem.read8,pci.mem.read16,pci.mem.read32
+< ok primitives=help,describe,cpu.vendor,cpu.features,mem.query,mem.read,mem.read8,mem.read16,mem.read32,mem.read.seg,mem.read.seg8,mem.read.seg16,mem.read.seg32,rtc.now,ticks.since_boot,io.in,pci.scan,pci.config.read,pci.config.read8,pci.config.read16,pci.config.read32,pci.cap.list,pci.cap.read,pci.bars,pci.bar.read,pci.mem.read,pci.mem.read8,pci.mem.read16,pci.mem.read32
 > cpu.vendor
 < ok vendor=GenuineIntel family=6 model=6 stepping=3
 > mem.read addr=7c00 len=16
@@ -79,6 +79,9 @@ See `docs/PROTOCOL.md` for the full wire spec.
 | `mem.read16`       | `addr=H(1-4,aligned)`       | `addr=H width=16 value=HHHH`                    |
 | `mem.read32`       | `addr=H(1-4,aligned)`       | `addr=H width=32 value=HHHHHHHH`                |
 | `mem.read.seg`     | `seg=H offset=H len=N(1-256)` | `seg=H offset=H len=N data=HEX`               |
+| `mem.read.seg8`    | `seg=H offset=H`            | `seg=H offset=H width=8 value=HH`               |
+| `mem.read.seg16`   | `seg=H offset=H(aligned)`   | `seg=H offset=H width=16 value=HHHH`            |
+| `mem.read.seg32`   | `seg=H offset=H(aligned)`   | `seg=H offset=H width=32 value=HHHHHHHH`        |
 | `rtc.now`          | none                        | `iso=YYYY-MM-DDTHH:MM:SS`                       |
 | `ticks.since_boot` | none                        | `ms=N`                                          |
 | `io.in`            | `port=H`                    | `port=H value=H` or `err code=denied`           |
@@ -106,6 +109,9 @@ little-endian `value=` field from the same address space. The 16- and
 `offset`, and the kernel reads through that segment register without crossing
 past offset `ffff`. This keeps the byte-count cap and read-only discipline,
 while letting a model inspect places like BIOS ROM at `f000:fff0`.
+Its typed siblings, `mem.read.seg8`, `mem.read.seg16`, and
+`mem.read.seg32`, keep the same segment:offset boundary but return
+little-endian `value=` fields and structured alignment errors.
 
 `io.in`'s allowlist is introspectable: `describe io.in` includes the full
 list. At the moment it covers the PIC (0x20, 0x21), PIT (0x40, 0x43),
@@ -210,7 +216,7 @@ Empty line to quit.
 python3 demo/bridge.py script demo/transcripts/01_cold_discovery.llmos
 ```
 
-The repo ships with fourteen transcripts - the fourteen demo beats described
+The repo ships with fifteen transcripts - the fifteen demo beats described
 below.
 
 ### Let Claude drive
@@ -224,7 +230,7 @@ The bridge hands Claude the boot banner and a tight system prompt, then
 lets it issue one command per turn. It runs until Claude emits `DONE` or
 the step limit is hit (default 20).
 
-## The demo, in fourteen beats
+## The demo, in fifteen beats
 
 **Beat 1 — Cold discovery.** Claude is told nothing about llmos except that
 `help` exists. It walks the introspection graph — `help`, then `describe`
@@ -355,18 +361,26 @@ offset-boundary and malformed-argument paths.
 
 Transcript: `demo/transcripts/14_segment_memory_reads.llmos`.
 
-Recorded outputs for all fourteen live in `demo/recordings/`.
+**Beat 15 - Typed segment memory reads.** Task: *read the BIOS reset vector
+as typed values*. Claude uses `mem.read.seg8`, `mem.read.seg16`, and
+`mem.read.seg32` against `f000:fff0`. The byte-string view still exists, but
+the typed siblings decode the same ROM bytes as little-endian values and keep
+alignment/cross-segment errors structured.
+
+Transcript: `demo/transcripts/15_typed_segment_memory_reads.llmos`.
+
+Recorded outputs for all fifteen live in `demo/recordings/`.
 
 ## Layout
 
 ```
 src/
   boot.asm          512 B — reset-and-retry MBR
-  kernel.asm        ~14 KB - protocol loop, twenty-six primitives, VGA mirror
+  kernel.asm        ~15 KB - protocol loop, twenty-nine primitives, VGA mirror
 Makefile            nasm, size-asserted
 demo/
   bridge.py         repl / script / ai modes over QEMU -serial stdio
-  transcripts/*.llmos  the fourteen demo beats, as replayable scripts
+  transcripts/*.llmos  the fifteen demo beats, as replayable scripts
   recordings/*.txt  captured outputs of each transcript
 docs/
   PROTOCOL.md       wire spec
@@ -388,8 +402,8 @@ docs/
 - Single CPU, real mode only. PC/AT-compatible BIOS required. UEFI-only
   machines will refuse to boot it.
 - `mem.read` reaches only the first 64 KB (segment 0 offset). `mem.read.seg`
-  exposes other real-mode segments for bounded reads, but still has no
-  writes or typed segment reads.
+  and its typed siblings expose other real-mode segments for bounded reads,
+  but still have no writes.
 - `io.out` is deliberately absent in v0.1 — the allowlist for writes wants
   more design thought than reads.
 - `pci.bar.read` and `pci.mem.read` both use small bounded reads.
