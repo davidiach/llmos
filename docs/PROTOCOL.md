@@ -44,6 +44,10 @@ Primitives whose schema says `args=none` reject any argument string with
 `err code=bad_arg detail="usage: describe NAME"`; a single unknown name
 returns `err code=unknown_cmd detail="no such primitive"`.
 
+For primitives whose schema uses `KEY=VALUE` arguments, the key set is exact:
+unknown keys and duplicate keys return the primitive's usage-shaped `bad_arg`
+response.
+
 Examples:
 ```
 help

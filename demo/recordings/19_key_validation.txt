@@ -1,0 +1,16 @@
+# # llmos v0.1 proto=1 primitives=29
+# =============================================================================
+# Beat 19: Structured arguments reject unknown and duplicate keys
+#
+# The schema's key set is exact. Extra or duplicate KEY=VALUE pairs should
+# return the primitive's usage-shaped bad_arg response instead of succeeding
+# with ignored caller input.
+# =============================================================================
+> mem.read addr=7c00 len=4 junk=1
+< err code=bad_arg detail="usage: mem.read addr=HHHH len=N"
+> mem.read addr=7c00 len=4 len=4
+< err code=bad_arg detail="usage: mem.read addr=HHHH len=N"
+> io.in port=3fd junk=1
+< err code=bad_arg detail="usage: io.in port=HH"
+> pci.bars bdf=00.02.0 junk=1
+< err code=bad_arg detail="usage: pci.bars bdf=BB.DD.F"

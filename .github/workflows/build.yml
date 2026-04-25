@@ -284,6 +284,17 @@ jobs:
           grep -A1 "^> describe no\.such" /tmp/18_describe_arg_validation.txt \
             | grep -q '^< err code=unknown_cmd detail="no such primitive"'
 
+          run_transcript 19_key_validation
+          # Beat 19: KEY=VALUE primitives reject unknown and duplicate keys.
+          grep -A1 "^> mem\.read addr=7c00 len=4 junk=1" /tmp/19_key_validation.txt \
+            | grep -q '^< err code=bad_arg detail="usage: mem.read addr=HHHH len=N"'
+          grep -A1 "^> mem\.read addr=7c00 len=4 len=4" /tmp/19_key_validation.txt \
+            | grep -q '^< err code=bad_arg detail="usage: mem.read addr=HHHH len=N"'
+          grep -A1 "^> io\.in port=3fd junk=1" /tmp/19_key_validation.txt \
+            | grep -q '^< err code=bad_arg detail="usage: io.in port=HH"'
+          grep -A1 "^> pci\.bars bdf=00\.02\.0 junk=1" /tmp/19_key_validation.txt \
+            | grep -q '^< err code=bad_arg detail="usage: pci.bars bdf=BB\.DD\.F"'
+
           # Capability-chain regression: attach a virtio PCI function because
           # the default i440FX devices expose no conventional capability list.
           # This locks down a non-empty chain, then reads bytes relative to the
