@@ -271,6 +271,10 @@ jobs:
           # fail as malformed instead of executing a truncated prefix.
           grep -q '^< err code=bad_arg detail="request line too long"' /tmp/16_line_length.txt
 
+          run_transcript 17_no_arg_validation
+          # Beat 17: args=none primitives must reject unexpected arguments.
+          test "$(grep -c '^< err code=bad_arg detail="unexpected arguments"' /tmp/17_no_arg_validation.txt)" = "7"
+
           # Capability-chain regression: attach a virtio PCI function because
           # the default i440FX devices expose no conventional capability list.
           # This locks down a non-empty chain, then reads bytes relative to the

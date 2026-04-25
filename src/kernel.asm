@@ -188,7 +188,13 @@ flat_gdt_desc:
 
 ; ---- help -----------------------------------------------------------------
 h_help:
+    call    require_no_args
+    jc      .usage
     mov     si, help_response
+    call    respond
+    ret
+.usage:
+    mov     si, err_no_args
     call    respond
     ret
 
@@ -224,6 +230,8 @@ h_describe:
 
 ; ---- cpu.vendor -----------------------------------------------------------
 h_cpu_vendor:
+    call    require_no_args
+    jc      .usage
     mov     si, resp_ok_prefix
     call    serial_puts_only
     mov     si, resp_vendor_kw
@@ -288,11 +296,17 @@ h_cpu_vendor:
     call    serial_put_dec
     call    respond_end
     ret
+.usage:
+    mov     si, err_no_args
+    call    respond
+    ret
 
 ; ---- cpu.features (a useful subset of CPUID leaf 1 EDX) -------------------
 ;   Walks feat_table: (name_ptr, bit_index). Emits comma-separated names
 ;   for each feature bit that is set.
 h_cpu_features:
+    call    require_no_args
+    jc      .usage
     mov     si, resp_ok_prefix
     call    serial_puts_only
     mov     si, resp_features_kw
@@ -327,9 +341,15 @@ h_cpu_features:
 .done:
     call    respond_end
     ret
+.usage:
+    mov     si, err_no_args
+    call    respond
+    ret
 
 ; ---- mem.query ------------------------------------------------------------
 h_mem_query:
+    call    require_no_args
+    jc      .usage
     mov     si, resp_ok_prefix
     call    serial_puts_only
     mov     si, resp_conv_kb
@@ -362,6 +382,10 @@ h_mem_query:
     mov     al, '0'
     call    serial_putc
     call    respond_end
+    ret
+.usage:
+    mov     si, err_no_args
+    call    respond
     ret
 
 ; ---- mem.read addr=H len=N ------------------------------------------------
@@ -672,6 +696,8 @@ h_mem_read_seg_typed:
 
 ; ---- rtc.now --------------------------------------------------------------
 h_rtc_now:
+    call    require_no_args
+    jc      .usage
     mov     ah, 0x02
     int     0x1A
     jc      .err
@@ -719,9 +745,15 @@ h_rtc_now:
     mov     si, err_rtc
     call    respond
     ret
+.usage:
+    mov     si, err_no_args
+    call    respond
+    ret
 
 ; ---- ticks.since_boot -----------------------------------------------------
 h_ticks:
+    call    require_no_args
+    jc      .usage
     push    es
     mov     ax, 0x40
     mov     es, ax
@@ -737,6 +769,10 @@ h_ticks:
     call    serial_puts_only
     call    serial_put_udec32
     call    respond_end
+    ret
+.usage:
+    mov     si, err_no_args
+    call    respond
     ret
 
 ; ---- io.in port=H (allowlisted) -------------------------------------------
@@ -799,6 +835,8 @@ h_io_in:
 ;     C = base class byte (2 hex, config offset 0x0B)
 ;   An empty bus yields `ok devices=`.
 h_pci_scan:
+    call    require_no_args
+    jc      .usage
     mov     si, resp_ok_prefix
     call    serial_puts_only
     mov     si, resp_devices_kw
@@ -848,6 +886,10 @@ h_pci_scan:
     jnz     .bus_loop               ; wraps after 255 -> 0, terminates loop
 
     call    respond_end
+    ret
+.usage:
+    mov     si, err_no_args
+    call    respond
     ret
 
 ; ---- pci_scan_one_bus ------------------------------------------------------
@@ -2418,6 +2460,16 @@ respond_end:
     call    vga_newline
     ret
 
+; require_no_args: CF=0 when the request has no argument string.
+require_no_args:
+    cmp     word [arg_ptr], 0
+    jne     .bad
+    clc
+    ret
+.bad:
+    stc
+    ret
+
 ; parse_cmd: in-place parse of input_buf. NUL-terminate the command name and
 ; set [arg_ptr] to the start of the argument string (or 0 if none).
 parse_cmd:
@@ -3064,6 +3116,8 @@ err_unknown_cmd:
     db 'err code=unknown_cmd detail="try `help`"', 0
 err_line_too_long:
     db 'err code=bad_arg detail="request line too long"', 0
+err_no_args:
+    db 'err code=bad_arg detail="unexpected arguments"', 0
 err_describe_usage:
     db 'err code=bad_arg detail="usage: describe NAME"', 0
 err_describe_unknown:
