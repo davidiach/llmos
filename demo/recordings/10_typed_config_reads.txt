@@ -1,0 +1,40 @@
+# # llmos v0.1 proto=1 primitives=20
+# =============================================================================
+# Beat 10: Typed PCI config reads - register values without byte unpacking
+#
+# Task handed to the model: "Read PCI configuration registers as typed
+# values."
+#
+# Beat 9 exposed config space as bounded bytes. This beat reads the same
+# device header as little-endian 8-, 16-, and 32-bit values so the model can
+# ask for a register value directly.
+# =============================================================================
+# Rediscover the display device and the typed config-space read primitives.
+> pci.scan
+< ok devices=00.00.0:8086:1237:06,00.01.0:8086:7000:06,00.01.1:8086:7010:01,00.01.3:8086:7113:06,00.02.0:1234:1111:03,00.03.0:8086:100e:02
+> describe pci.config.read8
+< ok name=pci.config.read8 args="bdf=BB.DD.F offset=H(0-ff)" returns="bdf=BB.DD.F offset=H width=8 value=HH" notes="reads one little-endian byte from PCI config space"
+> describe pci.config.read16
+< ok name=pci.config.read16 args="bdf=BB.DD.F offset=H(0-ff,aligned)" returns="bdf=BB.DD.F offset=H width=16 value=HHHH" notes="reads one little-endian aligned word from PCI config space"
+> describe pci.config.read32
+< ok name=pci.config.read32 args="bdf=BB.DD.F offset=H(0-ff,aligned)" returns="bdf=BB.DD.F offset=H width=32 value=HHHHHHHH" notes="reads one little-endian aligned dword from PCI config space"
+# Vendor and device ids are 16-bit little-endian words.
+> pci.config.read16 bdf=00.02.0 offset=0
+< ok bdf=00.02.0 offset=00 width=16 value=1234
+> pci.config.read16 bdf=00.02.0 offset=2
+< ok bdf=00.02.0 offset=02 width=16 value=1111
+# Revision/prog-if/subclass/class can also be read as one 32-bit value.
+> pci.config.read32 bdf=00.02.0 offset=8
+< ok bdf=00.02.0 offset=08 width=32 value=03000002
+# Or the model can read just the base-class byte at offset 0x0b.
+> pci.config.read8 bdf=00.02.0 offset=b
+< ok bdf=00.02.0 offset=0b width=8 value=03
+# Absent functions remain unavailable.
+> pci.config.read16 bdf=00.1f.0 offset=0
+< err code=unavailable detail="no such function"
+# Multi-byte typed reads require natural alignment.
+> pci.config.read32 bdf=00.02.0 offset=2
+< err code=out_of_range detail="offset or alignment out of range"
+# Malformed BDFs still fail before config-space probing.
+> pci.config.read32 bdf=00.02.0x offset=0
+< err code=bad_arg detail="usage: pci.config.read32 bdf=BB.DD.F offset=HH"

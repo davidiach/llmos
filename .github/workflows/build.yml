@@ -47,6 +47,9 @@ jobs:
           grep -q "^< ok primitives=help,describe" /tmp/01_cold_discovery.txt
           grep -q "^< ok name=pci.scan " /tmp/01_cold_discovery.txt
           grep -q "^< ok name=pci.config.read " /tmp/01_cold_discovery.txt
+          grep -q "^< ok name=pci.config.read8 " /tmp/01_cold_discovery.txt
+          grep -q "^< ok name=pci.config.read16 " /tmp/01_cold_discovery.txt
+          grep -q "^< ok name=pci.config.read32 " /tmp/01_cold_discovery.txt
           grep -q "^< ok name=pci.bar.read " /tmp/01_cold_discovery.txt
           grep -q "^< ok name=pci.mem.read " /tmp/01_cold_discovery.txt
           grep -q "^< ok name=pci.mem.read32 " /tmp/01_cold_discovery.txt
@@ -144,6 +147,22 @@ jobs:
           grep -A1 "^> pci\.config\.read bdf=00\.02\.0x" /tmp/09_config_reads.txt \
             | grep -q '^< err code=bad_arg detail="usage: pci.config.read bdf=BB\.DD\.F offset=HH len=N"'
 
+          run_transcript 10_typed_config_reads
+          # Beat 10: typed config-space reads - schema first, then decoded
+          # little-endian values over vendor/device and class registers.
+          # Absent functions and unaligned multi-byte reads stay structured.
+          grep -q "^< ok name=pci.config.read8 " /tmp/10_typed_config_reads.txt
+          grep -q "^< ok name=pci.config.read16 " /tmp/10_typed_config_reads.txt
+          grep -q "^< ok name=pci.config.read32 " /tmp/10_typed_config_reads.txt
+          grep -q "^< ok bdf=00\.02\.0 offset=00 width=16 value=1234" /tmp/10_typed_config_reads.txt
+          grep -q "^< ok bdf=00\.02\.0 offset=02 width=16 value=1111" /tmp/10_typed_config_reads.txt
+          grep -q "^< ok bdf=00\.02\.0 offset=08 width=32 value=03000002" /tmp/10_typed_config_reads.txt
+          grep -q "^< ok bdf=00\.02\.0 offset=0b width=8 value=03" /tmp/10_typed_config_reads.txt
+          grep -q '^< err code=unavailable detail="no such function"' /tmp/10_typed_config_reads.txt
+          grep -q '^< err code=out_of_range detail="offset or alignment out of range"' /tmp/10_typed_config_reads.txt
+          grep -A1 "^> pci\.config\.read32 bdf=00\.02\.0x" /tmp/10_typed_config_reads.txt \
+            | grep -q '^< err code=bad_arg detail="usage: pci.config.read32 bdf=BB\.DD\.F offset=HH"'
+
           # Bridge-following regression: boot QEMU with an explicit PCI bridge
           # plus an e1000 behind it. pci.scan must reach bus 01, pci.bars on
           # the bridge (header type 1) must cap at two slots, and pci.bars
@@ -155,6 +174,7 @@ jobs:
           pci.scan
           pci.bars bdf=00.04.0
           pci.config.read bdf=01.02.0 offset=0 len=4
+          pci.config.read32 bdf=01.02.0 offset=0
           pci.bars bdf=01.02.0
           pci.mem.read bdf=01.02.0 bar=0 offset=0 len=4
           pci.mem.read32 bdf=01.02.0 bar=0 offset=0
@@ -182,6 +202,7 @@ jobs:
           # e1000 on bus 01 MUST decode its 32-bit MMIO BAR - proves
           # pci.bars works on any bus, not just bus 0.
           grep -q "^< ok bdf=01\.02\.0 offset=00 len=4 data=86800e10" /tmp/pci_bridge_probe.txt
+          grep -q "^< ok bdf=01\.02\.0 offset=00 width=32 value=100e8086" /tmp/pci_bridge_probe.txt
           grep -q "^< ok bdf=01\.02\.0 bars=0:m32:[0-9a-f]\{8\}:n" /tmp/pci_bridge_probe.txt
           # And pci.mem.read must be able to read that downstream MMIO BAR.
           grep -q "^< ok bdf=01\.02\.0 bar=0 kind=m32 addr=[0-9a-f]\{8\} offset=0000 len=4 data=[0-9a-f]\{8\}" /tmp/pci_bridge_probe.txt

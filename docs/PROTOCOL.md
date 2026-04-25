@@ -77,7 +77,7 @@ Error codes in v1:
 On reset, the kernel sets up serial and emits:
 
 ```
-# llmos v0.1 proto=1 primitives=17
+# llmos v0.1 proto=1 primitives=20
 ```
 
 A bridge MUST wait for a line whose first character is `#` before sending
@@ -163,6 +163,34 @@ If the function is absent, the response is
 arguments return `bad_arg`. Out-of-range offsets, lengths, or reads that
 would cross past `0xff` return
 `err code=out_of_range detail="offset or len out of range"`.
+
+## PCI typed config-space reads
+
+`pci.config.read8`, `pci.config.read16`, and `pci.config.read32` read one
+little-endian value from a single function's conventional PCI config space.
+They use the same BDF and bounded offset policy as `pci.config.read`, but
+return a decoded `value=` field instead of address-order bytes.
+
+Arguments:
+
+- `bdf` - same `BB.DD.F` tuple emitted by `pci.scan`
+- `offset` - hex byte offset in config space (`0`-`ff`); `read16` and
+  `read32` require natural alignment
+
+The responses are:
+
+```
+ok bdf=BB.DD.F offset=HH width=8 value=HH
+ok bdf=BB.DD.F offset=HH width=16 value=HHHH
+ok bdf=BB.DD.F offset=HH width=32 value=HHHHHHHH
+```
+
+For `read16` and `read32`, the hex `value` is the little-endian numeric
+value loaded from config space, not the address-order byte string that
+`pci.config.read` returns. Out-of-range offsets or unaligned multi-byte
+offsets return
+`err code=out_of_range detail="offset or alignment out of range"`. Absent
+functions and malformed BDFs use the same errors as `pci.config.read`.
 
 ## BAR decoding
 

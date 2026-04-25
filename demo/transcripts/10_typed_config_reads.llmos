@@ -1,0 +1,35 @@
+# =============================================================================
+# Beat 10: Typed PCI config reads - register values without byte unpacking
+#
+# Task handed to the model: "Read PCI configuration registers as typed
+# values."
+#
+# Beat 9 exposed config space as bounded bytes. This beat reads the same
+# device header as little-endian 8-, 16-, and 32-bit values so the model can
+# ask for a register value directly.
+# =============================================================================
+
+# Rediscover the display device and the typed config-space read primitives.
+pci.scan
+describe pci.config.read8
+describe pci.config.read16
+describe pci.config.read32
+
+# Vendor and device ids are 16-bit little-endian words.
+pci.config.read16 bdf=00.02.0 offset=0
+pci.config.read16 bdf=00.02.0 offset=2
+
+# Revision/prog-if/subclass/class can also be read as one 32-bit value.
+pci.config.read32 bdf=00.02.0 offset=8
+
+# Or the model can read just the base-class byte at offset 0x0b.
+pci.config.read8 bdf=00.02.0 offset=b
+
+# Absent functions remain unavailable.
+pci.config.read16 bdf=00.1f.0 offset=0
+
+# Multi-byte typed reads require natural alignment.
+pci.config.read32 bdf=00.02.0 offset=2
+
+# Malformed BDFs still fail before config-space probing.
+pci.config.read32 bdf=00.02.0x offset=0
