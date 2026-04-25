@@ -1,0 +1,13 @@
+# # llmos v0.1 proto=1 primitives=29
+# =============================================================================
+# Beat 20: BDF arguments keep the pci.scan fixed-width shape
+#
+# PCI primitives accept the same BB.DD.F tuple shape that pci.scan emits.
+# Shortened bus/device fields should be malformed, not silently normalized.
+# =============================================================================
+> pci.bars bdf=0.2.0
+< err code=bad_arg detail="usage: pci.bars bdf=BB.DD.F"
+> pci.config.read bdf=00.2.0 offset=0 len=4
+< err code=bad_arg detail="usage: pci.config.read bdf=BB.DD.F offset=HH len=N"
+> pci.cap.list bdf=00.03.0
+< ok bdf=00.03.0 caps= truncated=0 malformed=0

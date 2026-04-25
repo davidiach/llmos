@@ -295,6 +295,14 @@ jobs:
           grep -A1 "^> pci\.bars bdf=00\.02\.0 junk=1" /tmp/19_key_validation.txt \
             | grep -q '^< err code=bad_arg detail="usage: pci.bars bdf=BB\.DD\.F"'
 
+          run_transcript 20_bdf_width_validation
+          # Beat 20: BDF inputs must match the fixed-width pci.scan shape.
+          grep -A1 "^> pci\.bars bdf=0\.2\.0" /tmp/20_bdf_width_validation.txt \
+            | grep -q '^< err code=bad_arg detail="usage: pci.bars bdf=BB\.DD\.F"'
+          grep -A1 "^> pci\.config\.read bdf=00\.2\.0 offset=0 len=4" /tmp/20_bdf_width_validation.txt \
+            | grep -q '^< err code=bad_arg detail="usage: pci.config.read bdf=BB\.DD\.F offset=HH len=N"'
+          grep -q "^< ok bdf=00\.03\.0 caps= truncated=0 malformed=0" /tmp/20_bdf_width_validation.txt
+
           # Capability-chain regression: attach a virtio PCI function because
           # the default i440FX devices expose no conventional capability list.
           # This locks down a non-empty chain, then reads bytes relative to the

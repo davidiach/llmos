@@ -1,0 +1,10 @@
+# =============================================================================
+# Beat 20: BDF arguments keep the pci.scan fixed-width shape
+#
+# PCI primitives accept the same BB.DD.F tuple shape that pci.scan emits.
+# Shortened bus/device fields should be malformed, not silently normalized.
+# =============================================================================
+
+pci.bars bdf=0.2.0
+pci.config.read bdf=00.2.0 offset=0 len=4
+pci.cap.list bdf=00.03.0

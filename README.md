@@ -216,7 +216,7 @@ Empty line to quit.
 python3 demo/bridge.py script demo/transcripts/01_cold_discovery.llmos
 ```
 
-The repo ships with nineteen transcripts - the nineteen demo beats described
+The repo ships with twenty transcripts - the twenty demo beats described
 below.
 
 ### Let Claude drive
@@ -230,7 +230,7 @@ The bridge hands Claude the boot banner and a tight system prompt, then
 lets it issue one command per turn. It runs until Claude emits `DONE` or
 the step limit is hit (default 20).
 
-## The demo, in nineteen beats
+## The demo, in twenty beats
 
 **Beat 1 — Cold discovery.** Claude is told nothing about llmos except that
 `help` exists. It walks the introspection graph — `help`, then `describe`
@@ -398,7 +398,14 @@ ignored caller input.
 
 Transcript: `demo/transcripts/19_key_validation.llmos`.
 
-Recorded outputs for all nineteen live in `demo/recordings/`.
+**Beat 20 - BDF width validation.** Task: *keep PCI address arguments in
+the same shape PCI discovery emits*. The transcript checks that BDF inputs
+must use fixed-width `BB.DD.F` fields, so shortened forms like `0.2.0` or
+`00.2.0` return the primitive's usage-shaped `bad_arg` response.
+
+Transcript: `demo/transcripts/20_bdf_width_validation.llmos`.
+
+Recorded outputs for all twenty live in `demo/recordings/`.
 
 ## Layout
 
@@ -409,7 +416,7 @@ src/
 Makefile            nasm, size-asserted
 demo/
   bridge.py         repl / script / ai modes over QEMU -serial stdio
-  transcripts/*.llmos  the nineteen demo beats, as replayable scripts
+  transcripts/*.llmos  the twenty demo beats, as replayable scripts
   recordings/*.txt  captured outputs of each transcript
 docs/
   PROTOCOL.md       wire spec
