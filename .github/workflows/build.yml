@@ -212,6 +212,8 @@ jobs:
           grep -q '^< err code=out_of_range detail="addr or alignment out of range"' /tmp/13_typed_memory_reads.txt
           grep -A1 "^> mem\.read32 addr=7c00x" /tmp/13_typed_memory_reads.txt \
             | grep -q '^< err code=bad_arg detail="usage: mem.read32 addr=HHHH"'
+          grep -A1 "^> mem\.read addr=7c00 len=65792" /tmp/13_typed_memory_reads.txt \
+            | grep -q '^< err code=bad_arg detail="usage: mem.read addr=HHHH len=N"'
 
           run_transcript 14_segment_memory_reads
           # Beat 14: explicit segment:offset memory reads - segment 0 agrees
