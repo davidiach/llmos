@@ -113,7 +113,7 @@ jobs:
           grep -q '^< err code=unavailable detail="BAR not present"' /tmp/06_bar_reads.txt
           grep -q '^< err code=out_of_range detail="bar, offset, or len out of range"' /tmp/06_bar_reads.txt
           grep -A1 "^> pci\.bar\.read bdf=00\.02\.0x" /tmp/06_bar_reads.txt \
-            | grep -q '^< err code=bad_arg detail="usage: pci.bar.read bdf=BB\.DD\.F bar=N offset=HHHH len=N"'
+            | grep -q '^< err code=bad_arg detail="usage: pci.bar.read bdf=BB\.DD\.F bar=N offset=HH len=N"'
 
           run_transcript 07_mem_reads
           # Beat 7: memory BAR reads - schema first, then successful
@@ -127,7 +127,7 @@ jobs:
           grep -q '^< err code=unavailable detail="BAR not present"' /tmp/07_mem_reads.txt
           grep -q '^< err code=out_of_range detail="bar, offset, or len out of range"' /tmp/07_mem_reads.txt
           grep -A1 "^> pci\.mem\.read bdf=00\.02\.0x" /tmp/07_mem_reads.txt \
-            | grep -q '^< err code=bad_arg detail="usage: pci.mem.read bdf=BB\.DD\.F bar=N offset=HHHH len=N"'
+            | grep -q '^< err code=bad_arg detail="usage: pci.mem.read bdf=BB\.DD\.F bar=N offset=HH len=N"'
 
           run_transcript 08_typed_mem_reads
           # Beat 8: typed MMIO reads - schema first, then fixed-width
@@ -143,8 +143,12 @@ jobs:
           grep -q '^< err code=out_of_range detail="bar, offset, or alignment out of range"' /tmp/08_typed_mem_reads.txt
           grep -A1 "^> pci\.mem\.read32 bdf=00\.02\.0 bar=2 offset=1" /tmp/08_typed_mem_reads.txt \
             | grep -q '^< err code=out_of_range detail="bar, offset, or alignment out of range"'
+          grep -A1 "^> pci\.mem\.read8 bdf=00\.02\.0x" /tmp/08_typed_mem_reads.txt \
+            | grep -q '^< err code=bad_arg detail="usage: pci.mem.read8 bdf=BB\.DD\.F bar=N offset=HH"'
+          grep -A1 "^> pci\.mem\.read16 bdf=00\.02\.0x" /tmp/08_typed_mem_reads.txt \
+            | grep -q '^< err code=bad_arg detail="usage: pci.mem.read16 bdf=BB\.DD\.F bar=N offset=HH"'
           grep -A1 "^> pci\.mem\.read32 bdf=00\.02\.0x" /tmp/08_typed_mem_reads.txt \
-            | grep -q '^< err code=bad_arg detail="usage: pci.mem.read32 bdf=BB\.DD\.F bar=N offset=HHHH"'
+            | grep -q '^< err code=bad_arg detail="usage: pci.mem.read32 bdf=BB\.DD\.F bar=N offset=HH"'
 
           run_transcript 09_config_reads
           # Beat 9: raw config-space reads - schema first, then bounded
