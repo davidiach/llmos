@@ -1,0 +1,26 @@
+# =============================================================================
+# Beat 13: Typed low-memory reads - values, not byte strings
+#
+# Task handed to the model: "Read the boot sector bytes as typed values."
+#
+# Beat 2 used mem.read to fetch low-memory byte strings. This beat keeps the
+# same segment-0 safety boundary, but asks the kernel to decode little-endian
+# 8-, 16-, and 32-bit values directly.
+# =============================================================================
+
+# Rediscover the typed low-memory primitives and the boot sector address.
+describe mem.read8
+describe mem.read16
+describe mem.read32
+
+# Compare the raw bytes with typed values at the same address.
+mem.read addr=7c00 len=4
+mem.read8 addr=7c00
+mem.read16 addr=7c00
+mem.read32 addr=7c00
+
+# Typed reads reject unaligned and out-of-range accesses before touching
+# memory, and malformed addresses keep the usual usage-shaped error.
+mem.read16 addr=7c01
+mem.read32 addr=fffe
+mem.read32 addr=7c00x

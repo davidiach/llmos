@@ -1,4 +1,4 @@
-# # llmos v0.1 proto=1 primitives=22
+# # llmos v0.1 proto=1 primitives=25
 # =============================================================================
 # Beat 1: Cold discovery
 #
@@ -8,12 +8,12 @@
 # derived entirely from introspection, with zero training data about llmos.
 # =============================================================================
 > help
-< ok primitives=help,describe,cpu.vendor,cpu.features,mem.query,mem.read,rtc.now,ticks.since_boot,io.in,pci.scan,pci.config.read,pci.config.read8,pci.config.read16,pci.config.read32,pci.cap.list,pci.cap.read,pci.bars,pci.bar.read,pci.mem.read,pci.mem.read8,pci.mem.read16,pci.mem.read32
-# "primitives=help,describe,cpu.vendor,cpu.features,mem.query,mem.read,rtc.now,
-#  ticks.since_boot,io.in,pci.scan,pci.config.read,pci.config.read8,
-#  pci.config.read16,pci.config.read32,pci.cap.list,pci.cap.read,pci.bars,
-#  pci.bar.read,pci.mem.read,pci.mem.read8,pci.mem.read16,pci.mem.read32"
-#  - twenty-two primitives.
+< ok primitives=help,describe,cpu.vendor,cpu.features,mem.query,mem.read,mem.read8,mem.read16,mem.read32,rtc.now,ticks.since_boot,io.in,pci.scan,pci.config.read,pci.config.read8,pci.config.read16,pci.config.read32,pci.cap.list,pci.cap.read,pci.bars,pci.bar.read,pci.mem.read,pci.mem.read8,pci.mem.read16,pci.mem.read32
+# "primitives=help,describe,cpu.vendor,cpu.features,mem.query,mem.read,
+#  mem.read8,mem.read16,mem.read32,rtc.now,ticks.since_boot,io.in,pci.scan,
+#  pci.config.read,pci.config.read8,pci.config.read16,pci.config.read32,
+#  pci.cap.list,pci.cap.read,pci.bars,pci.bar.read,pci.mem.read,
+#  pci.mem.read8,pci.mem.read16,pci.mem.read32" - twenty-five primitives.
 # Learn each one.
 > describe help
 < ok name=help args=none returns=primitives=CSV
@@ -27,6 +27,12 @@
 < ok name=mem.query args=none returns="conv_kb=N ext_kb=N ext_blocks_64k=N"
 > describe mem.read
 < ok name=mem.read args="addr=H(1-4) len=N(1-256)" returns="addr=H len=N data=HEX"
+> describe mem.read8
+< ok name=mem.read8 args="addr=H(1-4)" returns="addr=H width=8 value=HH" notes="reads one byte from segment 0"
+> describe mem.read16
+< ok name=mem.read16 args="addr=H(1-4,aligned)" returns="addr=H width=16 value=HHHH" notes="reads one little-endian aligned word from segment 0"
+> describe mem.read32
+< ok name=mem.read32 args="addr=H(1-4,aligned)" returns="addr=H width=32 value=HHHHHHHH" notes="reads one little-endian aligned dword from segment 0"
 > describe rtc.now
 < ok name=rtc.now args=none returns="iso=YYYY-MM-DDTHH:MM:SS"
 > describe ticks.since_boot
@@ -63,13 +69,14 @@
 # both cover the newly-advertised primitive.
 > pci.scan
 < ok devices=00.00.0:8086:1237:06,00.01.0:8086:7000:06,00.01.1:8086:7010:01,00.01.3:8086:7113:06,00.02.0:1234:1111:03,00.03.0:8086:100e:02
-# At this point the model knows: the OS has twenty-two primitives, which ones
+# At this point the model knows: the OS has twenty-five primitives, which ones
 # take arguments and in what format, and what fields each response contains.
 # io.in's schema even leaks its allowlist - the set of ports this machine
 # will let the model touch - and `pci.scan`/`pci.config.read`/
-# `pci.config.read32`/`pci.cap.list`/`pci.cap.read`/`pci.bars`/
-# `pci.bar.read`/`pci.mem.read`/`pci.mem.read32` together confirm the machine
-# can describe its bus topology, inspect config registers and capability
-# chains, name each device's windows, and read bytes or typed values through
-# config space plus I/O and memory BARs from the inside.
+# `mem.read32`/`pci.config.read32`/`pci.cap.list`/`pci.cap.read`/
+# `pci.bars`/`pci.bar.read`/`pci.mem.read`/`pci.mem.read32` together confirm
+# the machine can describe its bus topology, inspect config registers and
+# capability chains, name each device's windows, and read bytes or typed
+# values through low memory, config space, plus I/O and memory BARs from the
+# inside.
 # Everything learned without a manual.

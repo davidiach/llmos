@@ -1,4 +1,4 @@
-# # llmos v0.1 proto=1 primitives=22
+# # llmos v0.1 proto=1 primitives=25
 # =============================================================================
 # Beat 2: Hardware archaeology
 #

@@ -1,0 +1,34 @@
+# # llmos v0.1 proto=1 primitives=25
+# =============================================================================
+# Beat 13: Typed low-memory reads - values, not byte strings
+#
+# Task handed to the model: "Read the boot sector bytes as typed values."
+#
+# Beat 2 used mem.read to fetch low-memory byte strings. This beat keeps the
+# same segment-0 safety boundary, but asks the kernel to decode little-endian
+# 8-, 16-, and 32-bit values directly.
+# =============================================================================
+# Rediscover the typed low-memory primitives and the boot sector address.
+> describe mem.read8
+< ok name=mem.read8 args="addr=H(1-4)" returns="addr=H width=8 value=HH" notes="reads one byte from segment 0"
+> describe mem.read16
+< ok name=mem.read16 args="addr=H(1-4,aligned)" returns="addr=H width=16 value=HHHH" notes="reads one little-endian aligned word from segment 0"
+> describe mem.read32
+< ok name=mem.read32 args="addr=H(1-4,aligned)" returns="addr=H width=32 value=HHHHHHHH" notes="reads one little-endian aligned dword from segment 0"
+# Compare the raw bytes with typed values at the same address.
+> mem.read addr=7c00 len=4
+< ok addr=7c00 len=4 data=fa31c08e
+> mem.read8 addr=7c00
+< ok addr=7c00 width=8 value=fa
+> mem.read16 addr=7c00
+< ok addr=7c00 width=16 value=31fa
+> mem.read32 addr=7c00
+< ok addr=7c00 width=32 value=8ec031fa
+# Typed reads reject unaligned and out-of-range accesses before touching
+# memory, and malformed addresses keep the usual usage-shaped error.
+> mem.read16 addr=7c01
+< err code=out_of_range detail="addr or alignment out of range"
+> mem.read32 addr=fffe
+< err code=out_of_range detail="addr or alignment out of range"
+> mem.read32 addr=7c00x
+< err code=bad_arg detail="usage: mem.read32 addr=HHHH"

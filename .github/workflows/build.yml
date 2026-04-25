@@ -46,6 +46,9 @@ jobs:
           # reaches pci.scan, and pci.scan itself returns a populated bus walk.
           grep -q "^< ok primitives=help,describe" /tmp/01_cold_discovery.txt
           grep -q "^< ok name=pci.scan " /tmp/01_cold_discovery.txt
+          grep -q "^< ok name=mem.read8 " /tmp/01_cold_discovery.txt
+          grep -q "^< ok name=mem.read16 " /tmp/01_cold_discovery.txt
+          grep -q "^< ok name=mem.read32 " /tmp/01_cold_discovery.txt
           grep -q "^< ok name=pci.config.read " /tmp/01_cold_discovery.txt
           grep -q "^< ok name=pci.config.read8 " /tmp/01_cold_discovery.txt
           grep -q "^< ok name=pci.config.read16 " /tmp/01_cold_discovery.txt
@@ -187,6 +190,20 @@ jobs:
           grep -q '^< err code=unavailable detail="no such function"' /tmp/12_capability_reads.txt
           grep -A1 "^> pci\.cap\.read bdf=00\.03\.0x" /tmp/12_capability_reads.txt \
             | grep -q '^< err code=bad_arg detail="usage: pci.cap.read bdf=BB\.DD\.F cap=HH offset=HH len=N"'
+
+          run_transcript 13_typed_memory_reads
+          # Beat 13: typed low-memory reads - schema first, then raw boot
+          # sector bytes decoded as 8/16/32-bit little-endian values.
+          grep -q "^< ok name=mem.read8 " /tmp/13_typed_memory_reads.txt
+          grep -q "^< ok name=mem.read16 " /tmp/13_typed_memory_reads.txt
+          grep -q "^< ok name=mem.read32 " /tmp/13_typed_memory_reads.txt
+          grep -q "^< ok addr=7c00 len=4 data=fa31c08e" /tmp/13_typed_memory_reads.txt
+          grep -q "^< ok addr=7c00 width=8 value=fa" /tmp/13_typed_memory_reads.txt
+          grep -q "^< ok addr=7c00 width=16 value=31fa" /tmp/13_typed_memory_reads.txt
+          grep -q "^< ok addr=7c00 width=32 value=8ec031fa" /tmp/13_typed_memory_reads.txt
+          grep -q '^< err code=out_of_range detail="addr or alignment out of range"' /tmp/13_typed_memory_reads.txt
+          grep -A1 "^> mem\.read32 addr=7c00x" /tmp/13_typed_memory_reads.txt \
+            | grep -q '^< err code=bad_arg detail="usage: mem.read32 addr=HHHH"'
 
           # Capability-chain regression: attach a virtio PCI function because
           # the default i440FX devices expose no conventional capability list.
