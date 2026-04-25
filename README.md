@@ -15,7 +15,7 @@ errors as signal rather than failure.
 
 So: what does an OS look like when its primary user is an LLM?
 
-llmos is one attempt at an answer. It is a ~4 KB real-mode x86 kernel
+llmos is one attempt at an answer. It is a sub-16 KiB real-mode x86 kernel
 whose entire interaction surface is a line-oriented text protocol over
 COM1. There is no keyboard reader and no human prompt. Every capability
 is a single primitive with a typed request and a single-line response.
