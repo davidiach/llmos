@@ -77,7 +77,7 @@ Error codes in v1:
 On reset, the kernel sets up serial and emits:
 
 ```
-# llmos v0.1 proto=1 primitives=21
+# llmos v0.1 proto=1 primitives=22
 ```
 
 A bridge MUST wait for a line whose first character is `#` before sending
@@ -218,6 +218,35 @@ conventional capability area. In both cases the response remains a single
 structured `ok` line with whatever records were safely read. Absent
 functions return `err code=unavailable detail="no such function"`;
 malformed BDFs return `bad_arg`.
+
+## PCI capability-relative reads
+
+`pci.cap.read bdf=BB.DD.F cap=H offset=H len=N` reads bytes relative to a
+capability header returned by `pci.cap.list`. `cap` is the capability
+offset, not the capability id; this keeps the request unambiguous when a
+device exposes more than one capability with the same id.
+
+Arguments:
+
+- `bdf` - same `BB.DD.F` tuple emitted by `pci.scan`
+- `cap` - a dword-aligned capability offset from `pci.cap.list`
+- `offset` - hex byte offset relative to the capability header
+- `len` - number of bytes to read (`1`-`16`), capped so the effective
+  config-space read does not cross past `0xff`
+
+The response is:
+
+```
+ok bdf=BB.DD.F cap=HH id=HH offset=HH len=N data=HEX
+```
+
+`id` repeats the capability id found at `cap`, and `data` is emitted in
+address order from `cap + offset`. If `cap` is well-formed but not present
+in the capability chain, the response is
+`err code=unavailable detail="capability not found"`. Malformed BDFs or
+missing arguments return `bad_arg`; out-of-range capability offsets,
+relative offsets, lengths, or reads that would cross past `0xff` return
+`err code=out_of_range detail="cap, offset, or len out of range"`.
 
 ## BAR decoding
 

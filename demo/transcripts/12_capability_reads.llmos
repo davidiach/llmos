@@ -1,0 +1,26 @@
+# =============================================================================
+# Beat 12: PCI capability reads - capability-relative bytes
+#
+# Task handed to the model: "Read bytes from a PCI capability."
+#
+# Beat 11 names the capability chain. This beat adds the next guarded step:
+# a read must name one of those capability offsets, then stays relative to
+# that capability rather than accepting an arbitrary config-space address.
+# =============================================================================
+
+# Rediscover the network device and the capability-read primitive.
+pci.scan
+describe pci.cap.read
+
+# QEMU's default e1000 exposes no conventional capability chain, so even a
+# well-formed capability offset is unavailable rather than silently read.
+pci.cap.list bdf=00.03.0
+pci.cap.read bdf=00.03.0 cap=40 offset=0 len=4
+
+# Capability offsets must be dword-aligned and live in the conventional
+# capability area.
+pci.cap.read bdf=00.03.0 cap=3f offset=0 len=4
+
+# Capability reads preserve the same PCI error vocabulary.
+pci.cap.read bdf=00.1f.0 cap=40 offset=0 len=4
+pci.cap.read bdf=00.03.0x cap=40 offset=0 len=4

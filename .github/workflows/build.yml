@@ -51,6 +51,7 @@ jobs:
           grep -q "^< ok name=pci.config.read16 " /tmp/01_cold_discovery.txt
           grep -q "^< ok name=pci.config.read32 " /tmp/01_cold_discovery.txt
           grep -q "^< ok name=pci.cap.list " /tmp/01_cold_discovery.txt
+          grep -q "^< ok name=pci.cap.read " /tmp/01_cold_discovery.txt
           grep -q "^< ok name=pci.bar.read " /tmp/01_cold_discovery.txt
           grep -q "^< ok name=pci.mem.read " /tmp/01_cold_discovery.txt
           grep -q "^< ok name=pci.mem.read32 " /tmp/01_cold_discovery.txt
@@ -175,10 +176,22 @@ jobs:
           grep -A1 "^> pci\.cap\.list bdf=00\.03\.0x" /tmp/11_capability_list.txt \
             | grep -q '^< err code=bad_arg detail="usage: pci.cap.list bdf=BB\.DD\.F"'
 
+          run_transcript 12_capability_reads
+          # Beat 12: capability-relative reads - schema first, then a
+          # list-verified read that reports unavailable on default QEMU
+          # devices with no conventional capability chain.
+          grep -q "^< ok name=pci.cap.read " /tmp/12_capability_reads.txt
+          grep -q "^< ok bdf=00\.03\.0 caps= truncated=0 malformed=0" /tmp/12_capability_reads.txt
+          grep -q '^< err code=unavailable detail="capability not found"' /tmp/12_capability_reads.txt
+          grep -q '^< err code=out_of_range detail="cap, offset, or len out of range"' /tmp/12_capability_reads.txt
+          grep -q '^< err code=unavailable detail="no such function"' /tmp/12_capability_reads.txt
+          grep -A1 "^> pci\.cap\.read bdf=00\.03\.0x" /tmp/12_capability_reads.txt \
+            | grep -q '^< err code=bad_arg detail="usage: pci.cap.read bdf=BB\.DD\.F cap=HH offset=HH len=N"'
+
           # Capability-chain regression: attach a virtio PCI function because
           # the default i440FX devices expose no conventional capability list.
-          # This locks down a non-empty chain and the bounded OFF:ID record
-          # format without requiring the demo transcripts to change QEMU args.
+          # This locks down a non-empty chain, then reads bytes relative to the
+          # first listed capability without hard-coding that offset.
           cat > /tmp/pci_caps_probe.llmos <<'EOF'
           pci.scan
           pci.cap.list bdf=00.04.0
@@ -195,6 +208,18 @@ jobs:
           grep -q "^< ok devices=.*00\.04\.0:1af4:1000:02" /tmp/pci_caps_probe.txt
           grep -q "^< ok bdf=00\.04\.0 caps=[0-9a-f]\{2\}:[0-9a-f]\{2\}.* truncated=0 malformed=0" /tmp/pci_caps_probe.txt
           grep -q "^< ok bdf=00\.04\.0 offset=34 len=4 data=[0-9a-f]\{8\}" /tmp/pci_caps_probe.txt
+          cap=$(sed -n 's/^< ok bdf=00\.04\.0 caps=\([0-9a-f][0-9a-f]\):.*/\1/p' /tmp/pci_caps_probe.txt)
+          test -n "${cap}"
+          cat > /tmp/pci_cap_read_probe.llmos <<EOF
+          pci.cap.read bdf=00.04.0 cap=${cap} offset=0 len=4
+          EOF
+          timeout 30 python3 demo/bridge.py \
+            --image build/llmos.img \
+            --qemu-arg=-device \
+            --qemu-arg=virtio-net-pci,addr=4 \
+            script /tmp/pci_cap_read_probe.llmos \
+            | tee /tmp/pci_cap_read_probe.txt
+          grep -q "^< ok bdf=00\.04\.0 cap=${cap} id=[0-9a-f]\{2\} offset=00 len=4 data=[0-9a-f]\{8\}" /tmp/pci_cap_read_probe.txt
           echo "::endgroup::"
 
           # Bridge-following regression: boot QEMU with an explicit PCI bridge
