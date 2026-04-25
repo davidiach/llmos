@@ -266,6 +266,11 @@ jobs:
           grep -A1 "^> mem\.read\.seg32 seg=f000 offset=fff0x" /tmp/15_typed_segment_memory_reads.txt \
             | grep -q '^< err code=bad_arg detail="usage: mem.read.seg32 seg=HHHH offset=HHHH"'
 
+          run_transcript 16_line_length
+          # Beat 16: request lines longer than the kernel input buffer must
+          # fail as malformed instead of executing a truncated prefix.
+          grep -q '^< err code=bad_arg detail="request line too long"' /tmp/16_line_length.txt
+
           # Capability-chain regression: attach a virtio PCI function because
           # the default i440FX devices expose no conventional capability list.
           # This locks down a non-empty chain, then reads bytes relative to the
