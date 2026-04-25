@@ -24,9 +24,9 @@ The model bootstraps its understanding of the machine from the inside —
 it composes.
 
 ```
-# llmos v0.1 proto=1 primitives=17
+# llmos v0.1 proto=1 primitives=20
 > help
-< ok primitives=help,describe,cpu.vendor,cpu.features,mem.query,mem.read,rtc.now,ticks.since_boot,io.in,pci.scan,pci.config.read,pci.bars,pci.bar.read,pci.mem.read,pci.mem.read8,pci.mem.read16,pci.mem.read32
+< ok primitives=help,describe,cpu.vendor,cpu.features,mem.query,mem.read,rtc.now,ticks.since_boot,io.in,pci.scan,pci.config.read,pci.config.read8,pci.config.read16,pci.config.read32,pci.bars,pci.bar.read,pci.mem.read,pci.mem.read8,pci.mem.read16,pci.mem.read32
 > cpu.vendor
 < ok vendor=GenuineIntel family=6 model=6 stepping=3
 > mem.read addr=7c00 len=16
@@ -80,6 +80,9 @@ See `docs/PROTOCOL.md` for the full wire spec.
 | `io.in`            | `port=H`                    | `port=H value=H` or `err code=denied`           |
 | `pci.scan`         | none                        | `devices=B.D.F:VVVV:DDDD:CC[,...]` (bus 0 + bridges) |
 | `pci.config.read`  | `bdf=BB.DD.F offset=H len=N(1-16)` | `bdf=BB.DD.F offset=H len=N data=HEX` |
+| `pci.config.read8` | `bdf=BB.DD.F offset=H`      | `bdf=BB.DD.F offset=H width=8 value=HH`         |
+| `pci.config.read16` | `bdf=BB.DD.F offset=H(aligned)` | `bdf=BB.DD.F offset=H width=16 value=HHHH` |
+| `pci.config.read32` | `bdf=BB.DD.F offset=H(aligned)` | `bdf=BB.DD.F offset=H width=32 value=HHHHHHHH` |
 | `pci.bars`         | `bdf=BB.DD.F`               | `bdf=BB.DD.F bars=I:KIND[:BASE[:p\|n]],...`     |
 | `pci.bar.read`     | `bdf=BB.DD.F bar=N offset=H len=N(1-16)` | `bdf=BB.DD.F bar=N kind=io port=H offset=H len=N data=HEX` |
 | `pci.mem.read`     | `bdf=BB.DD.F bar=N offset=H len=N(1-16)` | `bdf=BB.DD.F bar=N kind=m32\|m64\|mlt1 addr=H offset=H len=N data=HEX` |
@@ -105,6 +108,11 @@ summaries. It takes a `BB.DD.F` tuple plus a bounded byte offset and length,
 then returns address-order bytes from conventional 256-byte PCI config space.
 Absent functions return `unavailable`; reads that would cross past `0xff`
 return `out_of_range`.
+
+`pci.config.read8`, `pci.config.read16`, and `pci.config.read32` are typed
+config-space siblings. They keep the same BDF plus offset shape, but return
+a decoded little-endian `value=` field. The 16- and 32-bit forms require
+natural alignment.
 
 `pci.bars` takes one of those `BB.DD.F` tuples back and decodes the
 function's Base Address Registers. Each record is `I:KIND[:BASE[:p|n]]`
@@ -174,7 +182,7 @@ Empty line to quit.
 python3 demo/bridge.py script demo/transcripts/01_cold_discovery.llmos
 ```
 
-The repo ships with nine transcripts - the nine demo beats described
+The repo ships with ten transcripts - the ten demo beats described
 below.
 
 ### Let Claude drive
@@ -188,7 +196,7 @@ The bridge hands Claude the boot banner and a tight system prompt, then
 lets it issue one command per turn. It runs until Claude emits `DONE` or
 the step limit is hit (default 20).
 
-## The demo, in nine beats
+## The demo, in ten beats
 
 **Beat 1 — Cold discovery.** Claude is told nothing about llmos except that
 `help` exists. It walks the introspection graph — `help`, then `describe`
@@ -277,18 +285,26 @@ cross-dword slice. The primitive stays bounded to the conventional
 
 Transcript: `demo/transcripts/09_config_reads.llmos`.
 
-Recorded outputs for all nine live in `demo/recordings/`.
+**Beat 10 - Typed PCI config reads.** Task: *read PCI configuration
+registers as typed values*. Claude uses `pci.config.read8`,
+`pci.config.read16`, and `pci.config.read32` to read the same header fields
+as little-endian register values: vendor id, device id, class code, and an
+unaligned-read denial.
+
+Transcript: `demo/transcripts/10_typed_config_reads.llmos`.
+
+Recorded outputs for all ten live in `demo/recordings/`.
 
 ## Layout
 
 ```
 src/
   boot.asm          512 B — reset-and-retry MBR
-  kernel.asm        ~10 KB - protocol loop, seventeen primitives, VGA mirror
+  kernel.asm        ~11 KB - protocol loop, twenty primitives, VGA mirror
 Makefile            nasm, size-asserted
 demo/
   bridge.py         repl / script / ai modes over QEMU -serial stdio
-  transcripts/*.llmos  the nine demo beats, as replayable scripts
+  transcripts/*.llmos  the ten demo beats, as replayable scripts
   recordings/*.txt  captured outputs of each transcript
 docs/
   PROTOCOL.md       wire spec
