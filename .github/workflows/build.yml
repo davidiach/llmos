@@ -46,6 +46,7 @@ jobs:
           # reaches pci.scan, and pci.scan itself returns a populated bus walk.
           grep -q "^< ok primitives=help,describe" /tmp/01_cold_discovery.txt
           grep -q "^< ok name=pci.scan " /tmp/01_cold_discovery.txt
+          grep -q "^< ok name=io.in .*allowlist=.*0x3f8.*0x3ff" /tmp/01_cold_discovery.txt
           grep -q "^< ok name=mem.read8 " /tmp/01_cold_discovery.txt
           grep -q "^< ok name=mem.read16 " /tmp/01_cold_discovery.txt
           grep -q "^< ok name=mem.read32 " /tmp/01_cold_discovery.txt
@@ -74,6 +75,7 @@ jobs:
           # Beat 3: denial as an interface element — at least one io.in call
           # MUST hit the allowlist and come back with code=denied.
           grep -q '^< err code=denied detail="port not in allowlist"' /tmp/03_denied_path.txt
+          grep -q "^< ok name=io.in .*allowlist=.*0x3f8.*0x3ff" /tmp/03_denied_path.txt
 
           run_transcript 04_pci_walk
           # Beat 4: bus walk — schema first, then pci.scan enumerates a
