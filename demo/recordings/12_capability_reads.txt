@@ -1,0 +1,30 @@
+# # llmos v0.1 proto=1 primitives=22
+# =============================================================================
+# Beat 12: PCI capability reads - capability-relative bytes
+#
+# Task handed to the model: "Read bytes from a PCI capability."
+#
+# Beat 11 names the capability chain. This beat adds the next guarded step:
+# a read must name one of those capability offsets, then stays relative to
+# that capability rather than accepting an arbitrary config-space address.
+# =============================================================================
+# Rediscover the network device and the capability-read primitive.
+> pci.scan
+< ok devices=00.00.0:8086:1237:06,00.01.0:8086:7000:06,00.01.1:8086:7010:01,00.01.3:8086:7113:06,00.02.0:1234:1111:03,00.03.0:8086:100e:02
+> describe pci.cap.read
+< ok name=pci.cap.read args="bdf=BB.DD.F cap=H(offset from pci.cap.list) offset=H(0-ff) len=N(1-16)" returns="bdf=BB.DD.F cap=H id=H offset=H len=N data=HEX" notes="cap must be present in the capability list; offset is relative to cap"
+# QEMU's default e1000 exposes no conventional capability chain, so even a
+# well-formed capability offset is unavailable rather than silently read.
+> pci.cap.list bdf=00.03.0
+< ok bdf=00.03.0 caps= truncated=0 malformed=0
+> pci.cap.read bdf=00.03.0 cap=40 offset=0 len=4
+< err code=unavailable detail="capability not found"
+# Capability offsets must be dword-aligned and live in the conventional
+# capability area.
+> pci.cap.read bdf=00.03.0 cap=3f offset=0 len=4
+< err code=out_of_range detail="cap, offset, or len out of range"
+# Capability reads preserve the same PCI error vocabulary.
+> pci.cap.read bdf=00.1f.0 cap=40 offset=0 len=4
+< err code=unavailable detail="no such function"
+> pci.cap.read bdf=00.03.0x cap=40 offset=0 len=4
+< err code=bad_arg detail="usage: pci.cap.read bdf=BB.DD.F cap=HH offset=HH len=N"

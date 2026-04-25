@@ -27,6 +27,7 @@
 ;     pci.config.read ...      read bytes from a function's config space
 ;     pci.config.read{8,16,32} ... read a typed config-space value
 ;     pci.cap.list ...         enumerate a function's PCI capabilities
+;     pci.cap.read ...         read bytes from a listed PCI capability
 ;     pci.bars bdf=BB.DD.F     decode a function's BARs (I/O, mmio32, mmio64)
 ;     pci.bar.read ...         read bytes from an I/O-space BAR
 ;     pci.mem.read ...         read bytes from a memory-space BAR
@@ -141,6 +142,7 @@ cmd_table:
     dw  cmd_pci_config_read16, h_pci_config_read16
     dw  cmd_pci_config_read32, h_pci_config_read32
     dw  cmd_pci_cap_list, h_pci_cap_list
+    dw  cmd_pci_cap_read, h_pci_cap_read
     dw  cmd_pci_bars,   h_pci_bars
     dw  cmd_pci_bar_read, h_pci_bar_read
     dw  cmd_pci_mem_read, h_pci_mem_read
@@ -1027,6 +1029,184 @@ h_pci_cap_list:
     ret
 .usage:
     mov     si, err_pci_cap_list_usage
+    call    respond
+    ret
+
+; ---- pci.cap.read bdf=BB.DD.F cap=HH offset=H len=N -----------------------
+;   Read up to 16 bytes relative to a capability returned by pci.cap.list.
+;   The capability offset must be present in the device's linked list.
+;
+;   Response:
+;     ok bdf=BB.DD.F cap=HH id=HH offset=HH len=N data=HEX
+h_pci_cap_read:
+    mov     si, [arg_ptr]
+    test    si, si
+    jz      .usage
+    mov     di, key_bdf
+    call    find_kv
+    jc      .usage
+    call    parse_bdf
+    jc      .usage
+
+    mov     si, [arg_ptr]
+    mov     di, key_cap
+    call    find_kv_hex
+    jc      .usage
+    cmp     ax, 0x00FF
+    ja      .range
+    mov     [pci_cap_target], al
+    cmp     al, 0x40
+    jb      .range
+    cmp     al, 0xFC
+    ja      .range
+    test    al, 0x03
+    jnz     .range
+
+    mov     si, [arg_ptr]
+    mov     di, key_offset
+    call    find_kv_hex
+    jc      .usage
+    cmp     ax, 0x00FF
+    ja      .range
+    mov     [pci_cap_offset], ax
+
+    mov     si, [arg_ptr]
+    mov     di, key_len
+    call    find_kv_dec
+    jc      .usage
+    test    ax, ax
+    jz      .range
+    cmp     ax, 16
+    ja      .range
+    mov     [pci_cap_len], ax
+
+    movzx   bx, byte [pci_cap_target]
+    add     bx, [pci_cap_offset]
+    cmp     bx, 0x00FF
+    ja      .range
+    mov     [pci_cap_eff_offset], bx
+    add     bx, ax
+    dec     bx
+    cmp     bx, 0x00FF
+    ja      .range
+
+    ; Probe presence via vendor id at config offset 0x00.
+    xor     al, al
+    call    pci_config_read_dword
+    cmp     ax, 0xFFFF
+    je      .absent
+
+    ; Status bit 4 says whether the conventional capability list exists.
+    mov     al, 0x04
+    call    pci_config_read_dword
+    shr     eax, 16
+    test    ax, 0x0010
+    jz      .not_found
+
+    ; Header types 0 and 1 put the first capability pointer at 0x34.
+    ; CardBus (type 2) uses 0x14; other header types have no supported list.
+    mov     al, 0x0C
+    call    pci_config_read_dword
+    shr     eax, 16
+    and     al, 0x7F
+    cmp     al, 0x02
+    je      .ptr14
+    cmp     al, 0x01
+    jbe     .ptr34
+    jmp     .not_found
+.ptr34:
+    mov     al, 0x34
+    call    pci_config_read_dword
+    jmp     .got_ptr
+.ptr14:
+    mov     al, 0x14
+    call    pci_config_read_dword
+.got_ptr:
+    mov     bl, al
+    test    bl, bl
+    jz      .not_found
+    and     bl, 0xFC
+    cmp     bl, 0x40
+    jb      .not_found
+
+    mov     cx, 48
+.find_loop:
+    mov     al, bl
+    cmp     al, 0x40
+    jb      .not_found
+    cmp     al, 0xFC
+    ja      .not_found
+    call    pci_config_read_dword
+    mov     [pci_cap_id], al
+    cmp     bl, [pci_cap_target]
+    je      .found
+    mov     bl, ah
+    test    bl, bl
+    jz      .not_found
+    and     bl, 0xFC
+    cmp     bl, 0x40
+    jb      .not_found
+    loop    .find_loop
+    jmp     .not_found
+
+.found:
+    ; "ok bdf=BB.DD.F cap=HH id=HH offset=HH len=N data=..."
+    mov     si, resp_ok_prefix
+    call    serial_puts_only
+    mov     si, resp_bdf_kw
+    call    serial_puts_only
+    call    emit_pci_bdf
+    mov     si, resp_cap_kw
+    call    serial_puts_only
+    mov     al, [pci_cap_target]
+    call    serial_put_hex_byte
+    mov     si, resp_id_kw
+    call    serial_puts_only
+    mov     al, [pci_cap_id]
+    call    serial_put_hex_byte
+    mov     si, resp_offset_kw
+    call    serial_puts_only
+    mov     ax, [pci_cap_offset]
+    call    serial_put_hex_byte
+    mov     si, resp_len_kw
+    call    serial_puts_only
+    mov     ax, [pci_cap_len]
+    call    serial_put_udec
+    mov     si, resp_data_kw
+    call    serial_puts_only
+
+    mov     cx, [pci_cap_len]
+    mov     bl, [pci_cap_eff_offset]
+.dump:
+    mov     al, bl
+    call    pci_config_read_dword
+    mov     dl, bl
+    and     dl, 0x03
+    jz      .emit
+.shift:
+    shr     eax, 8
+    dec     dl
+    jnz     .shift
+.emit:
+    call    serial_put_hex_byte
+    inc     bl
+    loop    .dump
+    call    respond_end
+    ret
+.not_found:
+    mov     si, err_pci_cap_not_found
+    call    respond
+    ret
+.absent:
+    mov     si, err_pci_absent
+    call    respond
+    ret
+.range:
+    mov     si, err_pci_cap_read_range
+    call    respond
+    ret
+.usage:
+    mov     si, err_pci_cap_read_usage
     call    respond
     ret
 
@@ -2457,7 +2637,7 @@ vga_banner:
     db '|  COM1 115200 8N1 - LLM driven   |', 13, 10
     db '+---------------------------------+', 13, 10, 13, 10, 0
 
-ready_msg:      db '# llmos v0.1 proto=1 primitives=21', 13, 10, 0
+ready_msg:      db '# llmos v0.1 proto=1 primitives=22', 13, 10, 0
 
 ; Command names (NUL-terminated)
 cmd_help:       db 'help', 0
@@ -2475,6 +2655,7 @@ cmd_pci_config_read8: db 'pci.config.read8', 0
 cmd_pci_config_read16: db 'pci.config.read16', 0
 cmd_pci_config_read32: db 'pci.config.read32', 0
 cmd_pci_cap_list: db 'pci.cap.list', 0
+cmd_pci_cap_read: db 'pci.cap.read', 0
 cmd_pci_bars:   db 'pci.bars', 0
 cmd_pci_bar_read: db 'pci.bar.read', 0
 cmd_pci_mem_read: db 'pci.mem.read', 0
@@ -2489,6 +2670,7 @@ key_port:       db 'port', 0
 key_bdf:        db 'bdf', 0
 key_bar:        db 'bar', 0
 key_offset:     db 'offset', 0
+key_cap:        db 'cap', 0
 
 ; Response line fragments (all include trailing space where appropriate)
 resp_ok_prefix:     db 'ok', 0
@@ -2512,6 +2694,8 @@ resp_bdf_kw:        db ' bdf=', 0
 resp_bar_kw:        db ' bar=', 0
 resp_bars_kw:       db ' bars=', 0
 resp_offset_kw:     db ' offset=', 0
+resp_cap_kw:        db ' cap=', 0
+resp_id_kw:         db ' id=', 0
 resp_kind_kw:       db ' kind=', 0
 resp_kind_io_kw:    db ' kind=io', 0
 resp_width_kw:      db ' width=', 0
@@ -2565,6 +2749,12 @@ err_pci_config_typed_range:
     db 'err code=out_of_range detail="offset or alignment out of range"', 0
 err_pci_cap_list_usage:
     db 'err code=bad_arg detail="usage: pci.cap.list bdf=BB.DD.F"', 0
+err_pci_cap_read_usage:
+    db 'err code=bad_arg detail="usage: pci.cap.read bdf=BB.DD.F cap=HH offset=HH len=N"', 0
+err_pci_cap_read_range:
+    db 'err code=out_of_range detail="cap, offset, or len out of range"', 0
+err_pci_cap_not_found:
+    db 'err code=unavailable detail="capability not found"', 0
 err_pci_bar_read_usage:
     db 'err code=bad_arg detail="usage: pci.bar.read bdf=BB.DD.F bar=N offset=HHHH len=N"', 0
 err_pci_mem_read_usage:
@@ -2596,7 +2786,7 @@ err_pci_mem_typed_range:
 
 ; Help response (full line).
 help_response:
-    db 'ok primitives=help,describe,cpu.vendor,cpu.features,mem.query,mem.read,rtc.now,ticks.since_boot,io.in,pci.scan,pci.config.read,pci.config.read8,pci.config.read16,pci.config.read32,pci.cap.list,pci.bars,pci.bar.read,pci.mem.read,pci.mem.read8,pci.mem.read16,pci.mem.read32', 0
+    db 'ok primitives=help,describe,cpu.vendor,cpu.features,mem.query,mem.read,rtc.now,ticks.since_boot,io.in,pci.scan,pci.config.read,pci.config.read8,pci.config.read16,pci.config.read32,pci.cap.list,pci.cap.read,pci.bars,pci.bar.read,pci.mem.read,pci.mem.read8,pci.mem.read16,pci.mem.read32', 0
 
 ; Schema table: (name_ptr, schema_line_ptr). NULL-terminated.
 schema_table:
@@ -2615,6 +2805,7 @@ schema_table:
     dw  cmd_pci_config_read16, sch_pci_config_read16
     dw  cmd_pci_config_read32, sch_pci_config_read32
     dw  cmd_pci_cap_list, sch_pci_cap_list
+    dw  cmd_pci_cap_read, sch_pci_cap_read
     dw  cmd_pci_bars,   sch_pci_bars
     dw  cmd_pci_bar_read, sch_pci_bar_read
     dw  cmd_pci_mem_read, sch_pci_mem_read
@@ -2638,6 +2829,7 @@ sch_pci_config_read8: db 'ok name=pci.config.read8 args="bdf=BB.DD.F offset=H(0-
 sch_pci_config_read16: db 'ok name=pci.config.read16 args="bdf=BB.DD.F offset=H(0-ff,aligned)" returns="bdf=BB.DD.F offset=H width=16 value=HHHH" notes="reads one little-endian aligned word from PCI config space"', 0
 sch_pci_config_read32: db 'ok name=pci.config.read32 args="bdf=BB.DD.F offset=H(0-ff,aligned)" returns="bdf=BB.DD.F offset=H width=32 value=HHHHHHHH" notes="reads one little-endian aligned dword from PCI config space"', 0
 sch_pci_cap_list: db 'ok name=pci.cap.list args="bdf=BB.DD.F" returns="bdf=BB.DD.F caps=OFF:ID[,..] truncated=N malformed=N" notes="walks conventional PCI capability list; empty list returns caps=; malformed chains are bounded and flagged"', 0
+sch_pci_cap_read: db 'ok name=pci.cap.read args="bdf=BB.DD.F cap=H(offset from pci.cap.list) offset=H(0-ff) len=N(1-16)" returns="bdf=BB.DD.F cap=H id=H offset=H len=N data=HEX" notes="cap must be present in the capability list; offset is relative to cap"', 0
 sch_pci_bars:   db 'ok name=pci.bars args="bdf=BB.DD.F" returns="bdf=BB.DD.F bars=I:KIND[:BASE[:p|n]],..." kinds="none|io:BASE32|m32:BASE32:p|n|m64:BASE64:p|n|m64trunc:BASE32:p|n|mlt1:BASE32:p|n|rsv:BASE32:p|n" slots="6 for header-type 0, 2 for header-type 1, else 0" notes="m64 consumes I+1; m64trunc flags a self-contradictory 64-bit BAR on the last slot; bdf format matches pci.scan"', 0
 sch_pci_bar_read: db 'ok name=pci.bar.read args="bdf=BB.DD.F bar=N offset=H(0-ff) len=N(1-16)" returns="bdf=BB.DD.F bar=N kind=io port=H offset=H len=N data=HEX" notes="reads I/O-space BARs only; memory BARs return denied"', 0
 sch_pci_mem_read: db 'ok name=pci.mem.read args="bdf=BB.DD.F bar=N offset=H(0-ff) len=N(1-16)" returns="bdf=BB.DD.F bar=N kind=m32|m64|mlt1 addr=H offset=H len=N data=HEX" notes="reads memory-space BARs only via flat FS; I/O BARs return denied; 64-bit BARs require high dword zero"', 0
@@ -2750,6 +2942,10 @@ pci_cfg_width_bits: dw 0
 pci_cfg_usage_ptr: dw 0
 pci_cap_ptr:    db 0
 pci_cap_id:     db 0
+pci_cap_target: db 0
+pci_cap_offset: dw 0
+pci_cap_eff_offset: dw 0
+pci_cap_len:    dw 0
 pci_cap_truncated: db 0
 pci_cap_malformed: db 0
 pci_nbars:      db 0
