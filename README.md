@@ -216,7 +216,7 @@ Empty line to quit.
 python3 demo/bridge.py script demo/transcripts/01_cold_discovery.llmos
 ```
 
-The repo ships with eighteen transcripts - the eighteen demo beats described
+The repo ships with nineteen transcripts - the nineteen demo beats described
 below.
 
 ### Let Claude drive
@@ -230,7 +230,7 @@ The bridge hands Claude the boot banner and a tight system prompt, then
 lets it issue one command per turn. It runs until Claude emits `DONE` or
 the step limit is hit (default 20).
 
-## The demo, in eighteen beats
+## The demo, in nineteen beats
 
 **Beat 1 — Cold discovery.** Claude is told nothing about llmos except that
 `help` exists. It walks the introspection graph — `help`, then `describe`
@@ -390,7 +390,15 @@ still returns `unknown_cmd`.
 
 Transcript: `demo/transcripts/18_describe_arg_validation.llmos`.
 
-Recorded outputs for all eighteen live in `demo/recordings/`.
+**Beat 19 - Structured argument key validation.** Task: *treat each
+`KEY=VALUE` schema as an exact key set*. The transcript checks that
+structured primitives reject unknown keys and duplicate keys with the
+primitive's usage-shaped `bad_arg` response, rather than succeeding with
+ignored caller input.
+
+Transcript: `demo/transcripts/19_key_validation.llmos`.
+
+Recorded outputs for all nineteen live in `demo/recordings/`.
 
 ## Layout
 
@@ -401,7 +409,7 @@ src/
 Makefile            nasm, size-asserted
 demo/
   bridge.py         repl / script / ai modes over QEMU -serial stdio
-  transcripts/*.llmos  the eighteen demo beats, as replayable scripts
+  transcripts/*.llmos  the nineteen demo beats, as replayable scripts
   recordings/*.txt  captured outputs of each transcript
 docs/
   PROTOCOL.md       wire spec
