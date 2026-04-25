@@ -76,6 +76,8 @@ jobs:
           # MUST hit the allowlist and come back with code=denied.
           grep -q '^< err code=denied detail="port not in allowlist"' /tmp/03_denied_path.txt
           grep -q "^< ok name=io.in .*allowlist=.*0x3f8.*0x3ff" /tmp/03_denied_path.txt
+          grep -q "^< ok port=03fd value=[0-9a-f]\{2\}" /tmp/03_denied_path.txt
+          ! grep -q "^< ok port=03fd value=03$" /tmp/03_denied_path.txt
 
           run_transcript 04_pci_walk
           # Beat 4: bus walk — schema first, then pci.scan enumerates a
