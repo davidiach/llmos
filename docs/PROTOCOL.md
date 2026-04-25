@@ -77,7 +77,7 @@ Error codes in v1:
 On reset, the kernel sets up serial and emits:
 
 ```
-# llmos v0.1 proto=1 primitives=22
+# llmos v0.1 proto=1 primitives=25
 ```
 
 A bridge MUST wait for a line whose first character is `#` before sending
@@ -104,6 +104,32 @@ full list in its response. Attempting to read a non-allowed port yields
 `err code=denied detail="port not in allowlist"`. This is deliberate: a
 model discovers the boundary by bumping into it, and can see the boundary
 by asking.
+
+## Typed low-memory reads
+
+`mem.read8`, `mem.read16`, and `mem.read32` read one little-endian value
+from segment 0. They use the same low-memory address boundary as
+`mem.read`, but return a decoded `value=` field instead of an address-order
+byte string.
+
+Arguments:
+
+- `addr` - hex offset in segment 0 (`0`-`ffff`); `read16` and `read32`
+  require natural alignment
+
+The responses are:
+
+```
+ok addr=HHHH width=8 value=HH
+ok addr=HHHH width=16 value=HHHH
+ok addr=HHHH width=32 value=HHHHHHHH
+```
+
+For `mem.read16` and `mem.read32`, the hex `value` is the little-endian
+numeric value loaded from memory. Out-of-range addresses, reads that would
+cross past `ffff`, or unaligned multi-byte addresses return
+`err code=out_of_range detail="addr or alignment out of range"`. Malformed
+or missing `addr` arguments return `bad_arg`.
 
 ## PCI enumeration
 

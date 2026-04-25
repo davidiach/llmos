@@ -20,6 +20,7 @@
 ;     cpu.features             decoded CPUID leaf 1 EDX feature flags
 ;     mem.query                conventional + extended memory from BIOS
 ;     mem.read addr=H len=N    hex-encoded memory bytes (max 256)
+;     mem.read{8,16,32} ...    read a typed value from low memory
 ;     rtc.now                  RTC date+time as ISO-ish
 ;     ticks.since_boot         BIOS ticks since boot, in ms
 ;     io.in port=H             8-bit port read (allowlisted)
@@ -133,6 +134,9 @@ cmd_table:
     dw  cmd_cpu_feat,   h_cpu_features
     dw  cmd_mem_query,  h_mem_query
     dw  cmd_mem_read,   h_mem_read
+    dw  cmd_mem_read8,  h_mem_read8
+    dw  cmd_mem_read16, h_mem_read16
+    dw  cmd_mem_read32, h_mem_read32
     dw  cmd_rtc_now,    h_rtc_now
     dw  cmd_ticks,      h_ticks
     dw  cmd_io_in,      h_io_in
@@ -366,6 +370,87 @@ h_mem_read:
     ret
 .range:
     mov     si, err_mem_read_range
+    call    respond
+    ret
+
+; ---- mem.read{8,16,32} addr=H --------------------------------------------
+;   Typed little-endian reads from segment 0, with alignment checks for
+;   multi-byte widths.
+h_mem_read8:
+    mov     word [mem_width_bits], 8
+    mov     word [mem_width_bytes], 1
+    mov     word [mem_typed_usage_ptr], err_mem_read8_usage
+    jmp     h_mem_read_typed
+
+h_mem_read16:
+    mov     word [mem_width_bits], 16
+    mov     word [mem_width_bytes], 2
+    mov     word [mem_typed_usage_ptr], err_mem_read16_usage
+    jmp     h_mem_read_typed
+
+h_mem_read32:
+    mov     word [mem_width_bits], 32
+    mov     word [mem_width_bytes], 4
+    mov     word [mem_typed_usage_ptr], err_mem_read32_usage
+
+h_mem_read_typed:
+    mov     si, [arg_ptr]
+    test    si, si
+    jz      .usage
+    mov     di, key_addr
+    call    find_kv_hex
+    jc      .usage
+    mov     [mem_addr], ax
+
+    mov     bx, [mem_width_bytes]
+    dec     bx
+    mov     ax, 0xFFFF
+    sub     ax, bx
+    cmp     [mem_addr], ax
+    ja      .range
+
+    mov     ax, [mem_addr]
+    test    ax, bx
+    jnz     .range
+
+    ; Response: ok addr=HHHH width=N value=HH..
+    mov     si, resp_ok_prefix
+    call    serial_puts_only
+    mov     si, resp_addr_kw
+    call    serial_puts_only
+    mov     ax, [mem_addr]
+    call    serial_put_hex_word
+    mov     si, resp_width_kw
+    call    serial_puts_only
+    mov     ax, [mem_width_bits]
+    call    serial_put_udec
+    mov     si, resp_value_kw
+    call    serial_puts_only
+
+    mov     bp, [mem_addr]
+    cmp     word [mem_width_bytes], 1
+    jne     .maybe_word
+    mov     al, [ds:bp]
+    call    serial_put_hex_byte
+    jmp     .done
+.maybe_word:
+    cmp     word [mem_width_bytes], 2
+    jne     .dword
+    mov     ax, [ds:bp]
+    call    serial_put_hex_word
+    jmp     .done
+.dword:
+    mov     eax, [ds:bp]
+    call    serial_put_hex_dword
+.done:
+    call    respond_end
+    ret
+.usage:
+    mov     si, [mem_typed_usage_ptr]
+    call    respond
+    ret
+.range:
+    mov     si, err_mem_typed_range
     call    respond
     ret
 
@@ -2160,6 +2245,8 @@ find_kv_hex:
     call    find_kv
     jc      .no
     call    parse_hex_word
+    jc      .no
+    call    kv_value_done
     ret
 .no:
     stc
@@ -2170,9 +2257,22 @@ find_kv_dec:
     call    find_kv
     jc      .no
     call    parse_dec_word
+    jc      .no
+    call    kv_value_done
     ret
 .no:
     stc
+    ret
+
+kv_value_done:
+    cmp     byte [si], 0
+    je      .ok
+    cmp     byte [si], ' '
+    je      .ok
+    stc
+    ret
+.ok:
+    clc
     ret
 
 ; find_kv: given arg string at DS:SI and key at DI (NUL-term, no '='),
@@ -2637,7 +2737,7 @@ vga_banner:
     db '|  COM1 115200 8N1 - LLM driven   |', 13, 10
     db '+---------------------------------+', 13, 10, 13, 10, 0
 
-ready_msg:      db '# llmos v0.1 proto=1 primitives=22', 13, 10, 0
+ready_msg:      db '# llmos v0.1 proto=1 primitives=25', 13, 10, 0
 
 ; Command names (NUL-terminated)
 cmd_help:       db 'help', 0
@@ -2646,6 +2746,9 @@ cmd_cpu_vendor: db 'cpu.vendor', 0
 cmd_cpu_feat:   db 'cpu.features', 0
 cmd_mem_query:  db 'mem.query', 0
 cmd_mem_read:   db 'mem.read', 0
+cmd_mem_read8:  db 'mem.read8', 0
+cmd_mem_read16: db 'mem.read16', 0
+cmd_mem_read32: db 'mem.read32', 0
 cmd_rtc_now:    db 'rtc.now', 0
 cmd_ticks:      db 'ticks.since_boot', 0
 cmd_io_in:      db 'io.in', 0
@@ -2727,6 +2830,14 @@ err_mem_read_usage:
     db 'err code=bad_arg detail="usage: mem.read addr=HHHH len=N"', 0
 err_mem_read_range:
     db 'err code=out_of_range detail="len must be 1..256"', 0
+err_mem_read8_usage:
+    db 'err code=bad_arg detail="usage: mem.read8 addr=HHHH"', 0
+err_mem_read16_usage:
+    db 'err code=bad_arg detail="usage: mem.read16 addr=HHHH"', 0
+err_mem_read32_usage:
+    db 'err code=bad_arg detail="usage: mem.read32 addr=HHHH"', 0
+err_mem_typed_range:
+    db 'err code=out_of_range detail="addr or alignment out of range"', 0
 err_rtc:
     db 'err code=unavailable detail="RTC read failed"', 0
 err_io_denied:
@@ -2786,7 +2897,7 @@ err_pci_mem_typed_range:
 
 ; Help response (full line).
 help_response:
-    db 'ok primitives=help,describe,cpu.vendor,cpu.features,mem.query,mem.read,rtc.now,ticks.since_boot,io.in,pci.scan,pci.config.read,pci.config.read8,pci.config.read16,pci.config.read32,pci.cap.list,pci.cap.read,pci.bars,pci.bar.read,pci.mem.read,pci.mem.read8,pci.mem.read16,pci.mem.read32', 0
+    db 'ok primitives=help,describe,cpu.vendor,cpu.features,mem.query,mem.read,mem.read8,mem.read16,mem.read32,rtc.now,ticks.since_boot,io.in,pci.scan,pci.config.read,pci.config.read8,pci.config.read16,pci.config.read32,pci.cap.list,pci.cap.read,pci.bars,pci.bar.read,pci.mem.read,pci.mem.read8,pci.mem.read16,pci.mem.read32', 0
 
 ; Schema table: (name_ptr, schema_line_ptr). NULL-terminated.
 schema_table:
@@ -2796,6 +2907,9 @@ schema_table:
     dw  cmd_cpu_feat,   sch_cpu_feat
     dw  cmd_mem_query,  sch_mem_query
     dw  cmd_mem_read,   sch_mem_read
+    dw  cmd_mem_read8,  sch_mem_read8
+    dw  cmd_mem_read16, sch_mem_read16
+    dw  cmd_mem_read32, sch_mem_read32
     dw  cmd_rtc_now,    sch_rtc_now
     dw  cmd_ticks,      sch_ticks
     dw  cmd_io_in,      sch_io_in
@@ -2820,6 +2934,9 @@ sch_cpu_vendor: db 'ok name=cpu.vendor args=none returns="vendor=S family=N mode
 sch_cpu_feat:   db 'ok name=cpu.features args=none returns="features=CSV (from CPUID leaf 1 EDX)"', 0
 sch_mem_query:  db 'ok name=mem.query args=none returns="conv_kb=N ext_kb=N ext_blocks_64k=N"', 0
 sch_mem_read:   db 'ok name=mem.read args="addr=H(1-4) len=N(1-256)" returns="addr=H len=N data=HEX"', 0
+sch_mem_read8:  db 'ok name=mem.read8 args="addr=H(1-4)" returns="addr=H width=8 value=HH" notes="reads one byte from segment 0"', 0
+sch_mem_read16: db 'ok name=mem.read16 args="addr=H(1-4,aligned)" returns="addr=H width=16 value=HHHH" notes="reads one little-endian aligned word from segment 0"', 0
+sch_mem_read32: db 'ok name=mem.read32 args="addr=H(1-4,aligned)" returns="addr=H width=32 value=HHHHHHHH" notes="reads one little-endian aligned dword from segment 0"', 0
 sch_rtc_now:    db 'ok name=rtc.now args=none returns="iso=YYYY-MM-DDTHH:MM:SS"', 0
 sch_ticks:      db 'ok name=ticks.since_boot args=none returns="ms=N"', 0
 sch_io_in:      db 'ok name=io.in args="port=H" returns="port=H value=H" allowlist=0x20,0x21,0x40,0x43,0x60,0x61,0x64,0x70,0x71', 0
@@ -2927,6 +3044,9 @@ cpu_sig:        dd 0
 boot_ticks:     dd 0
 mem_addr:       dw 0
 mem_len:        dw 0
+mem_width_bits: dw 0
+mem_width_bytes: dw 0
+mem_typed_usage_ptr: dw 0
 feat_first:     db 0
 pci_bus:        db 0
 pci_dev:        db 0

@@ -24,9 +24,9 @@ The model bootstraps its understanding of the machine from the inside —
 it composes.
 
 ```
-# llmos v0.1 proto=1 primitives=22
+# llmos v0.1 proto=1 primitives=25
 > help
-< ok primitives=help,describe,cpu.vendor,cpu.features,mem.query,mem.read,rtc.now,ticks.since_boot,io.in,pci.scan,pci.config.read,pci.config.read8,pci.config.read16,pci.config.read32,pci.cap.list,pci.cap.read,pci.bars,pci.bar.read,pci.mem.read,pci.mem.read8,pci.mem.read16,pci.mem.read32
+< ok primitives=help,describe,cpu.vendor,cpu.features,mem.query,mem.read,mem.read8,mem.read16,mem.read32,rtc.now,ticks.since_boot,io.in,pci.scan,pci.config.read,pci.config.read8,pci.config.read16,pci.config.read32,pci.cap.list,pci.cap.read,pci.bars,pci.bar.read,pci.mem.read,pci.mem.read8,pci.mem.read16,pci.mem.read32
 > cpu.vendor
 < ok vendor=GenuineIntel family=6 model=6 stepping=3
 > mem.read addr=7c00 len=16
@@ -75,6 +75,9 @@ See `docs/PROTOCOL.md` for the full wire spec.
 | `cpu.features`     | none                        | `features=CSV` (CPUID leaf 1 EDX, decoded)      |
 | `mem.query`        | none                        | `conv_kb=N ext_kb=N ext_blocks_64k=N`           |
 | `mem.read`         | `addr=H(1-4) len=N(1-256)`  | `addr=H len=N data=HEX`                         |
+| `mem.read8`        | `addr=H(1-4)`               | `addr=H width=8 value=HH`                       |
+| `mem.read16`       | `addr=H(1-4,aligned)`       | `addr=H width=16 value=HHHH`                    |
+| `mem.read32`       | `addr=H(1-4,aligned)`       | `addr=H width=32 value=HHHHHHHH`                |
 | `rtc.now`          | none                        | `iso=YYYY-MM-DDTHH:MM:SS`                       |
 | `ticks.since_boot` | none                        | `ms=N`                                          |
 | `io.in`            | `port=H`                    | `port=H value=H` or `err code=denied`           |
@@ -91,6 +94,12 @@ See `docs/PROTOCOL.md` for the full wire spec.
 | `pci.mem.read8`    | `bdf=BB.DD.F bar=N offset=H` | `bdf=BB.DD.F bar=N kind=m32\|m64\|mlt1 addr=H offset=H width=8 value=HH` |
 | `pci.mem.read16`   | `bdf=BB.DD.F bar=N offset=H(aligned)` | `bdf=BB.DD.F bar=N kind=m32\|m64\|mlt1 addr=H offset=H width=16 value=HHHH` |
 | `pci.mem.read32`   | `bdf=BB.DD.F bar=N offset=H(aligned)` | `bdf=BB.DD.F bar=N kind=m32\|m64\|mlt1 addr=H offset=H width=32 value=HHHHHHHH` |
+
+`mem.read` exposes low memory as bounded segment-0 byte strings. Its typed
+siblings, `mem.read8`, `mem.read16`, and `mem.read32`, return a decoded
+little-endian `value=` field from the same address space. The 16- and
+32-bit forms require natural alignment and do not cross beyond offset
+`ffff`.
 
 `io.in`'s allowlist is introspectable: `describe io.in` includes the full
 list. At the moment it covers the PIC (0x20, 0x21), PIT (0x40, 0x43),
@@ -195,7 +204,7 @@ Empty line to quit.
 python3 demo/bridge.py script demo/transcripts/01_cold_discovery.llmos
 ```
 
-The repo ships with twelve transcripts - the twelve demo beats described
+The repo ships with thirteen transcripts - the thirteen demo beats described
 below.
 
 ### Let Claude drive
@@ -209,7 +218,7 @@ The bridge hands Claude the boot banner and a tight system prompt, then
 lets it issue one command per turn. It runs until Claude emits `DONE` or
 the step limit is hit (default 20).
 
-## The demo, in twelve beats
+## The demo, in thirteen beats
 
 **Beat 1 — Cold discovery.** Claude is told nothing about llmos except that
 `help` exists. It walks the introspection graph — `help`, then `describe`
@@ -324,18 +333,26 @@ real capability payload read.
 
 Transcript: `demo/transcripts/12_capability_reads.llmos`.
 
-Recorded outputs for all twelve live in `demo/recordings/`.
+**Beat 13 - Typed low-memory reads.** Task: *read BIOS-loaded memory as
+typed values*. Claude uses `mem.read8`, `mem.read16`, and `mem.read32`
+against the boot sector bytes at `7c00`. The byte-string read still exists,
+but the typed siblings let the model consume little-endian values directly
+and get structured alignment/range errors.
+
+Transcript: `demo/transcripts/13_typed_memory_reads.llmos`.
+
+Recorded outputs for all thirteen live in `demo/recordings/`.
 
 ## Layout
 
 ```
 src/
   boot.asm          512 B — reset-and-retry MBR
-  kernel.asm        ~12 KB - protocol loop, twenty-two primitives, VGA mirror
+  kernel.asm        ~13 KB - protocol loop, twenty-five primitives, VGA mirror
 Makefile            nasm, size-asserted
 demo/
   bridge.py         repl / script / ai modes over QEMU -serial stdio
-  transcripts/*.llmos  the twelve demo beats, as replayable scripts
+  transcripts/*.llmos  the thirteen demo beats, as replayable scripts
   recordings/*.txt  captured outputs of each transcript
 docs/
   PROTOCOL.md       wire spec
