@@ -56,6 +56,14 @@ INPUT_MAX   equ 256
 FLAT_CODE_SEL equ 0x08
 FLAT_DATA_SEL equ 0x10
 BIOS_TICKS_PER_DAY equ 0x001800B0
+ARG_ADDR    equ 0x01
+ARG_SEG     equ 0x02
+ARG_LEN     equ 0x04
+ARG_PORT    equ 0x08
+ARG_BDF     equ 0x10
+ARG_BAR     equ 0x20
+ARG_OFFSET  equ 0x40
+ARG_CAP     equ 0x80
 
 ; =============================================================================
 ; Entry
@@ -405,6 +413,9 @@ h_mem_read:
     mov     si, [arg_ptr]
     test    si, si
     jz      .usage
+    mov     al, ARG_ADDR | ARG_LEN
+    call    require_known_args
+    jc      .usage
     mov     di, key_addr
     call    find_kv_hex
     jc      .usage
@@ -478,6 +489,9 @@ h_mem_read_typed:
     mov     si, [arg_ptr]
     test    si, si
     jz      .usage
+    mov     al, ARG_ADDR
+    call    require_known_args
+    jc      .usage
     mov     di, key_addr
     call    find_kv_hex
     jc      .usage
@@ -541,6 +555,9 @@ h_mem_read_seg:
     mov     si, [arg_ptr]
     test    si, si
     jz      .usage
+    mov     al, ARG_SEG | ARG_OFFSET | ARG_LEN
+    call    require_known_args
+    jc      .usage
     mov     di, key_seg
     call    find_kv_hex
     jc      .usage
@@ -631,6 +648,9 @@ h_mem_read_seg_typed:
     mov     si, [arg_ptr]
     test    si, si
     jz      .usage
+    mov     al, ARG_SEG | ARG_OFFSET
+    call    require_known_args
+    jc      .usage
     mov     di, key_seg
     call    find_kv_hex
     jc      .usage
@@ -795,6 +815,9 @@ h_io_in:
     mov     si, [arg_ptr]
     test    si, si
     jz      .usage
+    mov     al, ARG_PORT
+    call    require_known_args
+    jc      .usage
     mov     di, key_port
     call    find_kv_hex
     jc      .usage
@@ -1050,6 +1073,9 @@ h_pci_config_read:
     mov     si, [arg_ptr]
     test    si, si
     jz      .usage
+    mov     al, ARG_BDF | ARG_OFFSET | ARG_LEN
+    call    require_known_args
+    jc      .usage
     mov     di, key_bdf
     call    find_kv
     jc      .usage
@@ -1161,6 +1187,9 @@ h_pci_config_read_typed:
     mov     si, [arg_ptr]
     test    si, si
     jz      .usage
+    mov     al, ARG_BDF | ARG_OFFSET
+    call    require_known_args
+    jc      .usage
     mov     di, key_bdf
     call    find_kv
     jc      .usage
@@ -1261,6 +1290,9 @@ h_pci_cap_list:
     mov     si, [arg_ptr]
     test    si, si
     jz      .usage
+    mov     al, ARG_BDF
+    call    require_known_args
+    jc      .usage
     mov     di, key_bdf
     call    find_kv
     jc      .usage
@@ -1400,6 +1432,9 @@ h_pci_cap_read:
     mov     si, [arg_ptr]
     test    si, si
     jz      .usage
+    mov     al, ARG_BDF | ARG_CAP | ARG_OFFSET | ARG_LEN
+    call    require_known_args
+    jc      .usage
     mov     di, key_bdf
     call    find_kv
     jc      .usage
@@ -1595,6 +1630,9 @@ h_pci_bars:
     mov     si, [arg_ptr]
     test    si, si
     jz      .usage
+    mov     al, ARG_BDF
+    call    require_known_args
+    jc      .usage
     mov     di, key_bdf
     call    find_kv
     jc      .usage
@@ -1795,6 +1833,9 @@ h_pci_bar_read:
     mov     si, [arg_ptr]
     test    si, si
     jz      .usage
+    mov     al, ARG_BDF | ARG_BAR | ARG_OFFSET | ARG_LEN
+    call    require_known_args
+    jc      .usage
     mov     di, key_bdf
     call    find_kv
     jc      .usage
@@ -1950,6 +1991,9 @@ h_pci_mem_read:
     mov     si, [arg_ptr]
     test    si, si
     jz      .usage
+    mov     al, ARG_BDF | ARG_BAR | ARG_OFFSET | ARG_LEN
+    call    require_known_args
+    jc      .usage
     mov     di, key_bdf
     call    find_kv
     jc      .usage
@@ -2166,6 +2210,9 @@ h_pci_mem_read_typed:
     mov     si, [arg_ptr]
     test    si, si
     jz      .usage
+    mov     al, ARG_BDF | ARG_BAR | ARG_OFFSET
+    call    require_known_args
+    jc      .usage
     mov     di, key_bdf
     call    find_kv
     jc      .usage
@@ -2482,6 +2529,102 @@ require_no_args:
     clc
     ret
 .bad:
+    stc
+    ret
+
+; require_known_args: AL = allowed KEY=VALUE bitmask. CF=1 on unknown/duplicate.
+require_known_args:
+    push    si
+    mov     dl, al                  ; DL = allowed, DH = seen
+    xor     dh, dh
+    mov     si, [arg_ptr]
+.word:
+    mov     al, [si]
+    test    al, al
+    jz      .ok
+    cmp     al, ' '
+    je      .skip_space
+
+    mov     di, key_addr
+    mov     al, ARG_ADDR
+    call    arg_key_matches
+    jnc     .matched
+    mov     di, key_seg
+    mov     al, ARG_SEG
+    call    arg_key_matches
+    jnc     .matched
+    mov     di, key_len
+    mov     al, ARG_LEN
+    call    arg_key_matches
+    jnc     .matched
+    mov     di, key_port
+    mov     al, ARG_PORT
+    call    arg_key_matches
+    jnc     .matched
+    mov     di, key_bdf
+    mov     al, ARG_BDF
+    call    arg_key_matches
+    jnc     .matched
+    mov     di, key_bar
+    mov     al, ARG_BAR
+    call    arg_key_matches
+    jnc     .matched
+    mov     di, key_offset
+    mov     al, ARG_OFFSET
+    call    arg_key_matches
+    jnc     .matched
+    mov     di, key_cap
+    mov     al, ARG_CAP
+    call    arg_key_matches
+    jc      .bad
+
+.matched:
+    test    al, dl
+    jz      .bad
+    test    al, dh
+    jnz     .bad
+    or      dh, al
+.advance:
+    mov     al, [si]
+    test    al, al
+    jz      .ok
+    cmp     al, ' '
+    je      .skip_space
+    inc     si
+    jmp     .advance
+.skip_space:
+    inc     si
+    jmp     .word
+.ok:
+    pop     si
+    clc
+    ret
+.bad:
+    pop     si
+    stc
+    ret
+
+; arg_key_matches: DS:SI token, DI key string, AL bit. CF=0 on key= match.
+arg_key_matches:
+    push    bx
+    mov     bx, si
+.loop:
+    mov     ah, [di]
+    test    ah, ah
+    jz      .key_end
+    cmp     ah, [bx]
+    jne     .no
+    inc     bx
+    inc     di
+    jmp     .loop
+.key_end:
+    cmp     byte [bx], '='
+    jne     .no
+    pop     bx
+    clc
+    ret
+.no:
+    pop     bx
     stc
     ret
 
