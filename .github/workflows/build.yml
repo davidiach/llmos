@@ -275,6 +275,14 @@ jobs:
           # Beat 17: args=none primitives must reject unexpected arguments.
           test "$(grep -c '^< err code=bad_arg detail="unexpected arguments"' /tmp/17_no_arg_validation.txt)" = "7"
 
+          run_transcript 18_describe_arg_validation
+          # Beat 18: describe rejects extra tokens without confusing them for
+          # an unknown primitive name.
+          grep -A1 "^> describe help x=1" /tmp/18_describe_arg_validation.txt \
+            | grep -q '^< err code=bad_arg detail="usage: describe NAME"'
+          grep -A1 "^> describe no\.such" /tmp/18_describe_arg_validation.txt \
+            | grep -q '^< err code=unknown_cmd detail="no such primitive"'
+
           # Capability-chain regression: attach a virtio PCI function because
           # the default i440FX devices expose no conventional capability list.
           # This locks down a non-empty chain, then reads bytes relative to the

@@ -1,0 +1,11 @@
+# =============================================================================
+# Beat 18: describe separates malformed calls from unknown names
+#
+# A caller that adds tokens after NAME made a malformed describe request. That
+# should return bad_arg, while a single well-formed but absent primitive name
+# should keep the unknown_cmd result.
+# =============================================================================
+
+describe help
+describe help x=1
+describe no.such
