@@ -18,6 +18,9 @@
 # Compare the raw bytes with typed values at the same address.
 > mem.read addr=7c00 len=4
 < ok addr=7c00 len=4 data=fa31c08e
+# Leading zeroes are value-equivalent for decimal arguments that still fit.
+> mem.read addr=7c00 len=000004
+< ok addr=7c00 len=4 data=fa31c08e
 > mem.read8 addr=7c00
 < ok addr=7c00 width=8 value=fa
 > mem.read16 addr=7c00
