@@ -47,6 +47,7 @@ jobs:
           grep -q "^< ok primitives=help,describe" /tmp/01_cold_discovery.txt
           grep -q "^< ok name=pci.scan " /tmp/01_cold_discovery.txt
           grep -q "^< ok name=io.in .*allowlist=.*0x3f8.*0x3ff" /tmp/01_cold_discovery.txt
+          grep -q "^< ok name=mem.read .*range may not cross offset ffff" /tmp/01_cold_discovery.txt
           grep -q "^< ok name=mem.read8 " /tmp/01_cold_discovery.txt
           grep -q "^< ok name=mem.read16 " /tmp/01_cold_discovery.txt
           grep -q "^< ok name=mem.read32 " /tmp/01_cold_discovery.txt
