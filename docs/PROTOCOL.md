@@ -117,6 +117,14 @@ full list in its response. Attempting to read a non-allowed port yields
 model discovers the boundary by bumping into it, and can see the boundary
 by asking.
 
+## Clock ticks
+
+`ticks.since_boot` derives milliseconds from the BIOS tick counter at
+`0x40:0x6c`. That counter rolls over at midnight; llmos compensates for one
+observed midnight rollover by adding one BIOS day before subtracting the boot
+snapshot. It is meant for short-lived demo sessions, not multi-day uptime
+accounting.
+
 ## Typed low-memory reads
 
 `mem.read addr=H len=N` reads bytes from segment 0. `len` is capped at
