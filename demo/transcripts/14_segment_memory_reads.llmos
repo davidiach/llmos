@@ -1,0 +1,24 @@
+# =============================================================================
+# Beat 14: Segment memory reads - BIOS ROM by real-mode address
+#
+# Task handed to the model: "Read the BIOS reset vector."
+#
+# Earlier memory reads were fixed to segment 0. This beat keeps the same
+# bounded, read-only byte-string shape, but lets the model name a real-mode
+# segment:offset pair explicitly.
+# =============================================================================
+
+# Rediscover the segment-memory primitive.
+describe mem.read.seg
+
+# Segment 0 agrees with mem.read at the boot sector address.
+mem.read addr=7c00 len=4
+mem.read.seg seg=0000 offset=7c00 len=4
+
+# The BIOS reset vector lives at physical ffff0, i.e. f000:fff0.
+mem.read.seg seg=f000 offset=fff0 len=16
+
+# Reads cannot cross the end of the named segment, and malformed offset
+# strings are still rejected rather than silently truncated.
+mem.read.seg seg=f000 offset=fff0 len=17
+mem.read.seg seg=f000 offset=fff0x len=1

@@ -77,7 +77,7 @@ Error codes in v1:
 On reset, the kernel sets up serial and emits:
 
 ```
-# llmos v0.1 proto=1 primitives=25
+# llmos v0.1 proto=1 primitives=26
 ```
 
 A bridge MUST wait for a line whose first character is `#` before sending
@@ -130,6 +130,31 @@ numeric value loaded from memory. Out-of-range addresses, reads that would
 cross past `ffff`, or unaligned multi-byte addresses return
 `err code=out_of_range detail="addr or alignment out of range"`. Malformed
 or missing `addr` arguments return `bad_arg`.
+
+## Segment memory reads
+
+`mem.read.seg seg=H offset=H len=N` reads bytes through an explicit
+real-mode segment:offset pair. It is the same read-only, small bounded byte
+view as `mem.read`, but the caller names the segment instead of being fixed
+to segment 0.
+
+Arguments:
+
+- `seg` - real-mode segment value (`0`-`ffff`)
+- `offset` - offset within that segment (`0`-`ffff`)
+- `len` - number of bytes to read (`1`-`256`), capped so the read does not
+  cross past offset `ffff`
+
+The response is:
+
+```
+ok seg=HHHH offset=HHHH len=N data=HEX
+```
+
+`data` is emitted in address order from `seg:offset`. Reads that would
+cross the end of the segment return
+`err code=out_of_range detail="offset or len out of range"`. Malformed or
+missing arguments return `bad_arg`.
 
 ## PCI enumeration
 
