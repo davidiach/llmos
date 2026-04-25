@@ -20,7 +20,7 @@
 # giving it unfettered port access. It can read the schema to confirm the
 # allowlist instead of probing blindly:
 > describe io.in
-< ok name=io.in args="port=H" returns="port=H value=H" allowlist=0x20,0x21,0x40,0x43,0x60,0x61,0x64,0x70,0x71
+< ok name=io.in args="port=H" returns="port=H value=H" allowlist=0x20,0x21,0x40,0x43,0x60,0x61,0x64,0x70,0x71,0x3f8,0x3f9,0x3fa,0x3fb,0x3fc,0x3fd,0x3fe,0x3ff
 # The schema lists every port this OS will permit. ATA is absent. The model
 # now knows the answer is "I can't read SMART on this OS" — and knows *why*.
 # The interesting part for the audience: the denial message was enough for

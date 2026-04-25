@@ -3140,7 +3140,7 @@ sch_mem_read_seg16: db 'ok name=mem.read.seg16 args="seg=H(0-ffff) offset=H(0-ff
 sch_mem_read_seg32: db 'ok name=mem.read.seg32 args="seg=H(0-ffff) offset=H(0-ffff,aligned)" returns="seg=H offset=H width=32 value=HHHHHHHH" notes="reads one little-endian aligned dword through a real-mode segment:offset"', 0
 sch_rtc_now:    db 'ok name=rtc.now args=none returns="iso=YYYY-MM-DDTHH:MM:SS"', 0
 sch_ticks:      db 'ok name=ticks.since_boot args=none returns="ms=N"', 0
-sch_io_in:      db 'ok name=io.in args="port=H" returns="port=H value=H" allowlist=0x20,0x21,0x40,0x43,0x60,0x61,0x64,0x70,0x71', 0
+sch_io_in:      db 'ok name=io.in args="port=H" returns="port=H value=H" allowlist=0x20,0x21,0x40,0x43,0x60,0x61,0x64,0x70,0x71,0x3f8,0x3f9,0x3fa,0x3fb,0x3fc,0x3fd,0x3fe,0x3ff', 0
 sch_pci_scan:   db 'ok name=pci.scan args=none returns="devices=B.D.F:VVVV:DDDD:CC[,...]" scope="bus 0 + any PCI-to-PCI bridges reachable from it; class = base class byte"', 0
 sch_pci_config_read: db 'ok name=pci.config.read args="bdf=BB.DD.F offset=H(0-ff) len=N(1-16)" returns="bdf=BB.DD.F offset=H len=N data=HEX" notes="reads PCI config-space bytes; absent functions return unavailable"', 0
 sch_pci_config_read8: db 'ok name=pci.config.read8 args="bdf=BB.DD.F offset=H(0-ff)" returns="bdf=BB.DD.F offset=H width=8 value=HH" notes="reads one little-endian byte from PCI config space"', 0
