@@ -228,6 +228,12 @@ def make_anthropic_client():
     return anthropic.Anthropic()
 
 
+def preflight_script_path(path: Path) -> None:
+    if not path.is_file():
+        print(f"error: script file not found: {path}", file=sys.stderr)
+        sys.exit(2)
+
+
 def mode_ai(
     session: LlmosSession,
     task: str,
@@ -328,6 +334,8 @@ def main() -> int:
     sp_ai.add_argument("-n", "--limit", type=int, default=20, help="step limit")
     args = p.parse_args()
 
+    if args.mode == "script":
+        preflight_script_path(args.file)
     ai_client = make_anthropic_client() if args.mode == "ai" else None
     session = LlmosSession(image=args.image, qemu=args.qemu, qemu_args=args.qemu_arg)
     try:
