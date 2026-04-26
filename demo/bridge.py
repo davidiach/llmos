@@ -194,10 +194,16 @@ def mode_repl(session: LlmosSession) -> None:
         print(f"< {resp}")
 
 
-def mode_script(session: LlmosSession, path: Path) -> None:
+def mode_script(
+    session: LlmosSession,
+    path: Path,
+    lines: list[str] | None = None,
+) -> None:
     """Send every non-comment, non-empty line from the given file."""
+    if lines is None:
+        lines = path.read_text(encoding="utf-8").splitlines()
     print(f"# {session.banner}")
-    for raw in path.read_text().splitlines():
+    for raw in lines:
         if not raw or raw.startswith("#"):
             if raw.startswith("#"):
                 print(raw)
@@ -229,9 +235,14 @@ def make_anthropic_client():
     return anthropic.Anthropic()
 
 
-def preflight_script_path(path: Path) -> None:
+def load_script_lines(path: Path) -> list[str]:
     if not path.is_file():
         print(f"error: script file not found: {path}", file=sys.stderr)
+        sys.exit(2)
+    try:
+        return path.read_text(encoding="utf-8").splitlines()
+    except (OSError, UnicodeDecodeError) as e:
+        print(f"error: cannot read script file: {path}: {e}", file=sys.stderr)
         sys.exit(2)
 
 
@@ -347,8 +358,7 @@ def main() -> int:
     sp_ai.add_argument("-n", "--limit", type=int, default=20, help="step limit")
     args = p.parse_args()
 
-    if args.mode == "script":
-        preflight_script_path(args.file)
+    script_lines = load_script_lines(args.file) if args.mode == "script" else None
     ai_client = make_anthropic_client() if args.mode == "ai" else None
     preflight_image_path(args.image)
     preflight_qemu(args.qemu)
@@ -361,7 +371,7 @@ def main() -> int:
         if args.mode == "repl":
             mode_repl(session)
         elif args.mode == "script":
-            mode_script(session, args.file)
+            mode_script(session, args.file, script_lines)
         elif args.mode == "ai":
             mode_ai(session, args.task, step_limit=args.limit, client=ai_client)
     finally:
