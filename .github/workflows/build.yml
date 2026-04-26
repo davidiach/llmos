@@ -625,6 +625,58 @@ jobs:
               raise SystemExit(f"script mode did not report validation failure: {out.getvalue()!r}")
           PY
 
+      - name: Check bridge AI preflight
+        run: |
+          python3 - <<'PY'
+          import contextlib
+          import io
+          import os
+          import sys
+
+          import demo.bridge as bridge
+
+          old_argv = sys.argv[:]
+          old_session = bridge.LlmosSession
+          old_key = os.environ.pop("ANTHROPIC_API_KEY", None)
+          had_anthropic = "anthropic" in sys.modules
+          old_anthropic = sys.modules.get("anthropic")
+
+          class FakeAnthropic:
+              @staticmethod
+              def Anthropic():
+                  raise SystemExit("Anthropic client should not be constructed without an API key")
+
+          def fail_session(*args, **kwargs):
+              raise SystemExit("LlmosSession should not be constructed before AI preflight")
+
+          try:
+              sys.modules["anthropic"] = FakeAnthropic
+              bridge.LlmosSession = fail_session
+              sys.argv = ["bridge.py", "--image", "/tmp/missing.img", "ai", "task"]
+              stderr = io.StringIO()
+              with contextlib.redirect_stderr(stderr):
+                  try:
+                      bridge.main()
+                  except SystemExit as exc:
+                      if exc.code != 2:
+                          raise SystemExit(f"unexpected exit code: {exc.code}")
+                  else:
+                      raise SystemExit("AI mode without ANTHROPIC_API_KEY should exit")
+              if "ANTHROPIC_API_KEY" not in stderr.getvalue():
+                  raise SystemExit(f"unexpected stderr: {stderr.getvalue()!r}")
+          finally:
+              sys.argv = old_argv
+              bridge.LlmosSession = old_session
+              if old_key is not None:
+                  os.environ["ANTHROPIC_API_KEY"] = old_key
+              else:
+                  os.environ.pop("ANTHROPIC_API_KEY", None)
+              if had_anthropic:
+                  sys.modules["anthropic"] = old_anthropic
+              else:
+                  sys.modules.pop("anthropic", None)
+          PY
+
       - name: Upload image
         uses: actions/upload-artifact@v4
         with:
