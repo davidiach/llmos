@@ -558,6 +558,54 @@ jobs:
           check([b"o", b"k"])
           PY
 
+      - name: Check bridge single-line sends
+        run: |
+          python3 - <<'PY'
+          from demo.bridge import LlmosSession
+
+          class RecordingStdin:
+              def __init__(self):
+                  self.writes = []
+                  self.flushed = False
+
+              def write(self, payload):
+                  self.writes.append(payload)
+
+              def flush(self):
+                  self.flushed = True
+
+          class FakeProc:
+              def __init__(self):
+                  self.stdin = RecordingStdin()
+
+          def check(cmd):
+              session = object.__new__(LlmosSession)
+              session.proc = FakeProc()
+              session._sync_lost = False
+              session.log = []
+              session._readline = lambda timeout=2.0: (_ for _ in ()).throw(
+                  SystemExit("send tried to read after rejecting command")
+              )
+
+              try:
+                  session.send(cmd)
+              except ValueError as exc:
+                  if "single line" not in str(exc):
+                      raise SystemExit(f"unexpected ValueError detail: {exc}")
+              else:
+                  raise SystemExit("expected ValueError for multi-line command")
+
+              if session.proc.stdin.writes:
+                  raise SystemExit(f"multi-line command was written: {session.proc.stdin.writes!r}")
+              if session.proc.stdin.flushed:
+                  raise SystemExit("multi-line command flushed stdin")
+              if session._sync_lost:
+                  raise SystemExit("local validation failure desynchronized session")
+
+          check("help\nmem.query")
+          check("help\rmem.query")
+          PY
+
       - name: Upload image
         uses: actions/upload-artifact@v4
         with:

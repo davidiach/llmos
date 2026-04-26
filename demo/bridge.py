@@ -122,6 +122,8 @@ class LlmosSession:
         """Send one command, return its single-line response."""
         if self._sync_lost:
             raise RuntimeError("session is desynchronized; restart llmos")
+        if "\r" in cmd or "\n" in cmd:
+            raise ValueError("llmos commands must be a single line")
         payload = (cmd + "\r\n").encode("ascii")
         assert self.proc.stdin is not None
         try:
