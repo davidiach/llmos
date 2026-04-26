@@ -751,6 +751,47 @@ jobs:
               bridge.LlmosSession = old_session
           PY
 
+      - name: Check bridge qemu preflight
+        run: |
+          python3 - <<'PY'
+          import contextlib
+          import io
+          import sys
+
+          import demo.bridge as bridge
+
+          old_argv = sys.argv[:]
+          old_session = bridge.LlmosSession
+
+          def fail_session(*args, **kwargs):
+              raise SystemExit("LlmosSession should not be constructed before qemu preflight")
+
+          try:
+              bridge.LlmosSession = fail_session
+              sys.argv = [
+                  "bridge.py",
+                  "--image",
+                  "build/llmos.img",
+                  "--qemu",
+                  "llmos-definitely-missing-qemu",
+                  "repl",
+              ]
+              stderr = io.StringIO()
+              with contextlib.redirect_stderr(stderr):
+                  try:
+                      bridge.main()
+                  except SystemExit as exc:
+                      if exc.code != 2:
+                          raise SystemExit(f"unexpected exit code: {exc.code}")
+                  else:
+                      raise SystemExit("repl mode with a missing qemu should exit")
+              if "qemu executable not found" not in stderr.getvalue():
+                  raise SystemExit(f"unexpected stderr: {stderr.getvalue()!r}")
+          finally:
+              sys.argv = old_argv
+              bridge.LlmosSession = old_session
+          PY
+
       - name: Upload image
         uses: actions/upload-artifact@v4
         with:

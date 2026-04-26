@@ -18,6 +18,7 @@ returning control.
 import argparse
 import os
 import queue
+import shutil
 import subprocess
 import sys
 import threading
@@ -240,6 +241,12 @@ def preflight_image_path(path: Path) -> None:
         sys.exit(2)
 
 
+def preflight_qemu(qemu: str) -> None:
+    if shutil.which(qemu) is None:
+        print(f"error: qemu executable not found: {qemu}", file=sys.stderr)
+        sys.exit(2)
+
+
 def mode_ai(
     session: LlmosSession,
     task: str,
@@ -344,6 +351,7 @@ def main() -> int:
         preflight_script_path(args.file)
     ai_client = make_anthropic_client() if args.mode == "ai" else None
     preflight_image_path(args.image)
+    preflight_qemu(args.qemu)
     session = LlmosSession(image=args.image, qemu=args.qemu, qemu_args=args.qemu_arg)
     try:
         if args.mode == "repl":
