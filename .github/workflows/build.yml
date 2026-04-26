@@ -430,11 +430,12 @@ jobs:
 
           from demo.bridge import LlmosSession
 
-          class StubbornProc:
-              def __init__(self):
+          class FakeProc:
+              def __init__(self, reap_after_kill):
                   self.terminated = False
                   self.killed = False
                   self.wait_calls = 0
+                  self.reap_after_kill = reap_after_kill
 
               def poll(self):
                   return None
@@ -447,19 +448,23 @@ jobs:
 
               def wait(self, timeout=None):
                   self.wait_calls += 1
-                  if self.wait_calls == 1:
+                  if self.wait_calls == 1 or not self.reap_after_kill:
                       raise subprocess.TimeoutExpired("stubborn-qemu", timeout)
                   return -9
 
-          session = object.__new__(LlmosSession)
-          session.proc = StubbornProc()
-          session.close()
-          if not session.proc.terminated:
-              raise SystemExit("close did not try terminate")
-          if not session.proc.killed:
-              raise SystemExit("close did not kill after terminate timeout")
-          if session.proc.wait_calls != 2:
-              raise SystemExit(f"expected wait after kill, got {session.proc.wait_calls}")
+          def check(reap_after_kill):
+              session = object.__new__(LlmosSession)
+              session.proc = FakeProc(reap_after_kill)
+              session.close()
+              if not session.proc.terminated:
+                  raise SystemExit("close did not try terminate")
+              if not session.proc.killed:
+                  raise SystemExit("close did not kill after terminate timeout")
+              if session.proc.wait_calls != 2:
+                  raise SystemExit(f"expected wait after kill, got {session.proc.wait_calls}")
+
+          check(True)
+          check(False)
           PY
 
       - name: Upload image
