@@ -677,6 +677,46 @@ jobs:
                   sys.modules.pop("anthropic", None)
           PY
 
+      - name: Check bridge script preflight
+        run: |
+          python3 - <<'PY'
+          import contextlib
+          import io
+          import sys
+
+          import demo.bridge as bridge
+
+          old_argv = sys.argv[:]
+          old_session = bridge.LlmosSession
+
+          def fail_session(*args, **kwargs):
+              raise SystemExit("LlmosSession should not be constructed before script preflight")
+
+          try:
+              bridge.LlmosSession = fail_session
+              sys.argv = [
+                  "bridge.py",
+                  "--image",
+                  "/tmp/missing.img",
+                  "script",
+                  "/tmp/missing.llmos",
+              ]
+              stderr = io.StringIO()
+              with contextlib.redirect_stderr(stderr):
+                  try:
+                      bridge.main()
+                  except SystemExit as exc:
+                      if exc.code != 2:
+                          raise SystemExit(f"unexpected exit code: {exc.code}")
+                  else:
+                      raise SystemExit("script mode with a missing file should exit")
+              if "script file not found" not in stderr.getvalue():
+                  raise SystemExit(f"unexpected stderr: {stderr.getvalue()!r}")
+          finally:
+              sys.argv = old_argv
+              bridge.LlmosSession = old_session
+          PY
+
       - name: Upload image
         uses: actions/upload-artifact@v4
         with:
