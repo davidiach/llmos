@@ -717,6 +717,49 @@ jobs:
               bridge.LlmosSession = old_session
           PY
 
+      - name: Check bridge script decode preflight
+        run: |
+          python3 - <<'PY'
+          import contextlib
+          import io
+          import sys
+          from pathlib import Path
+
+          import demo.bridge as bridge
+
+          old_argv = sys.argv[:]
+          old_session = bridge.LlmosSession
+          script = Path("/tmp/llmos-invalid-utf8.llmos")
+          script.write_bytes(b"\xff\n")
+
+          def fail_session(*args, **kwargs):
+              raise SystemExit("LlmosSession should not be constructed before script decode preflight")
+
+          try:
+              bridge.LlmosSession = fail_session
+              sys.argv = [
+                  "bridge.py",
+                  "--image",
+                  "build/llmos.img",
+                  "script",
+                  str(script),
+              ]
+              stderr = io.StringIO()
+              with contextlib.redirect_stderr(stderr):
+                  try:
+                      bridge.main()
+                  except SystemExit as exc:
+                      if exc.code != 2:
+                          raise SystemExit(f"unexpected exit code: {exc.code}")
+                  else:
+                      raise SystemExit("script mode with an invalid UTF-8 file should exit")
+              if "cannot read script file" not in stderr.getvalue():
+                  raise SystemExit(f"unexpected stderr: {stderr.getvalue()!r}")
+          finally:
+              sys.argv = old_argv
+              bridge.LlmosSession = old_session
+          PY
+
       - name: Check bridge image preflight
         run: |
           python3 - <<'PY'
