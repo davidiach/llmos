@@ -64,7 +64,11 @@ class LlmosSession:
         )
         self._stdout_thread.start()
         self._sync_lost = False
-        self.banner = self._await_banner(boot_timeout)
+        try:
+            self.banner = self._await_banner(boot_timeout)
+        except BaseException:
+            self.close()
+            raise
         self.log: list[tuple[str, str]] = []   # (request, response) history
 
     # ----- low-level I/O ----------------------------------------------------
