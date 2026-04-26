@@ -1,0 +1,10 @@
+# =============================================================================
+# Beat 21: Script mode preserves request bytes
+#
+# The bridge is part of the protocol boundary. Script replay should send the
+# command line exactly as written, so leading whitespace remains visible to the
+# kernel instead of being trimmed into a different request.
+# =============================================================================
+
+ help
+help unexpected=1

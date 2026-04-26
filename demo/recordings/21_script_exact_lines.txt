@@ -1,0 +1,12 @@
+# # llmos v0.1 proto=1 primitives=29
+# =============================================================================
+# Beat 21: Script mode preserves request bytes
+#
+# The bridge is part of the protocol boundary. Script replay should send the
+# command line exactly as written, so leading whitespace remains visible to the
+# kernel instead of being trimmed into a different request.
+# =============================================================================
+>  help
+< err code=unknown_cmd detail="try `help`"
+> help unexpected=1
+< err code=bad_arg detail="unexpected arguments"
