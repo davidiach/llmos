@@ -131,12 +131,18 @@ class LlmosSession:
         return resp
 
     def close(self) -> None:
+        if self.proc.poll() is not None:
+            return
         try:
             self.proc.terminate()
+            self.proc.wait(timeout=1.0)
+        except subprocess.TimeoutExpired:
+            self.proc.kill()
             self.proc.wait(timeout=1.0)
         except Exception:
             try:
                 self.proc.kill()
+                self.proc.wait(timeout=1.0)
             except Exception:
                 pass
 

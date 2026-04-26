@@ -423,6 +423,45 @@ jobs:
               raise SystemExit(f"qemu process leaked: {probe.stdout.strip()}")
           PY
 
+      - name: Check bridge forced-close wait
+        run: |
+          python3 - <<'PY'
+          import subprocess
+
+          from demo.bridge import LlmosSession
+
+          class StubbornProc:
+              def __init__(self):
+                  self.terminated = False
+                  self.killed = False
+                  self.wait_calls = 0
+
+              def poll(self):
+                  return None
+
+              def terminate(self):
+                  self.terminated = True
+
+              def kill(self):
+                  self.killed = True
+
+              def wait(self, timeout=None):
+                  self.wait_calls += 1
+                  if self.wait_calls == 1:
+                      raise subprocess.TimeoutExpired("stubborn-qemu", timeout)
+                  return -9
+
+          session = object.__new__(LlmosSession)
+          session.proc = StubbornProc()
+          session.close()
+          if not session.proc.terminated:
+              raise SystemExit("close did not try terminate")
+          if not session.proc.killed:
+              raise SystemExit("close did not kill after terminate timeout")
+          if session.proc.wait_calls != 2:
+              raise SystemExit(f"expected wait after kill, got {session.proc.wait_calls}")
+          PY
+
       - name: Upload image
         uses: actions/upload-artifact@v4
         with:
