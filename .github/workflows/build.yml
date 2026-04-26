@@ -792,6 +792,36 @@ jobs:
               bridge.LlmosSession = old_session
           PY
 
+      - name: Check bridge startup failure
+        run: |
+          python3 - <<'PY'
+          import contextlib
+          import io
+          import sys
+
+          import demo.bridge as bridge
+
+          old_argv = sys.argv[:]
+          old_session = bridge.LlmosSession
+
+          def fail_session(*args, **kwargs):
+              raise EOFError("llmos exited before completing a line")
+
+          try:
+              bridge.LlmosSession = fail_session
+              sys.argv = ["bridge.py", "--image", "build/llmos.img", "repl"]
+              stderr = io.StringIO()
+              with contextlib.redirect_stderr(stderr):
+                  rc = bridge.main()
+              if rc != 2:
+                  raise SystemExit(f"unexpected return code: {rc}")
+              if "failed to start llmos" not in stderr.getvalue():
+                  raise SystemExit(f"unexpected stderr: {stderr.getvalue()!r}")
+          finally:
+              sys.argv = old_argv
+              bridge.LlmosSession = old_session
+          PY
+
       - name: Upload image
         uses: actions/upload-artifact@v4
         with:

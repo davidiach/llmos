@@ -352,7 +352,11 @@ def main() -> int:
     ai_client = make_anthropic_client() if args.mode == "ai" else None
     preflight_image_path(args.image)
     preflight_qemu(args.qemu)
-    session = LlmosSession(image=args.image, qemu=args.qemu, qemu_args=args.qemu_arg)
+    try:
+        session = LlmosSession(image=args.image, qemu=args.qemu, qemu_args=args.qemu_arg)
+    except (EOFError, OSError, RuntimeError, TimeoutError) as e:
+        print(f"error: failed to start llmos: {e}", file=sys.stderr)
+        return 2
     try:
         if args.mode == "repl":
             mode_repl(session)
