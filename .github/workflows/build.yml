@@ -561,7 +561,11 @@ jobs:
       - name: Check bridge single-line sends
         run: |
           python3 - <<'PY'
-          from demo.bridge import LlmosSession
+          import contextlib
+          import io
+          from pathlib import Path
+
+          from demo.bridge import LlmosSession, mode_script
 
           class RecordingStdin:
               def __init__(self):
@@ -578,7 +582,7 @@ jobs:
               def __init__(self):
                   self.stdin = RecordingStdin()
 
-          def check(cmd):
+          def check_rejected(cmd, detail):
               session = object.__new__(LlmosSession)
               session.proc = FakeProc()
               session._sync_lost = False
@@ -590,20 +594,35 @@ jobs:
               try:
                   session.send(cmd)
               except ValueError as exc:
-                  if "single line" not in str(exc):
+                  if detail not in str(exc):
                       raise SystemExit(f"unexpected ValueError detail: {exc}")
               else:
-                  raise SystemExit("expected ValueError for multi-line command")
+                  raise SystemExit("expected ValueError for invalid command")
 
               if session.proc.stdin.writes:
-                  raise SystemExit(f"multi-line command was written: {session.proc.stdin.writes!r}")
+                  raise SystemExit(f"invalid command was written: {session.proc.stdin.writes!r}")
               if session.proc.stdin.flushed:
-                  raise SystemExit("multi-line command flushed stdin")
+                  raise SystemExit("invalid command flushed stdin")
               if session._sync_lost:
                   raise SystemExit("local validation failure desynchronized session")
 
-          check("help\nmem.query")
-          check("help\rmem.query")
+          check_rejected("help\nmem.query", "single line")
+          check_rejected("help\rmem.query", "single line")
+          check_rejected("help " + chr(0x2603), "ASCII")
+
+          class RejectingSession:
+              banner = "# llmos test proto=1"
+
+              def send(self, cmd):
+                  raise ValueError("llmos commands must be ASCII")
+
+          script = Path("/tmp/llmos-invalid-command.llmos")
+          script.write_text("help " + chr(0x2603) + "\n", encoding="utf-8")
+          out = io.StringIO()
+          with contextlib.redirect_stdout(out):
+              mode_script(RejectingSession(), script)
+          if "# invalid command: llmos commands must be ASCII" not in out.getvalue():
+              raise SystemExit(f"script mode did not report validation failure: {out.getvalue()!r}")
           PY
 
       - name: Upload image

@@ -124,7 +124,10 @@ class LlmosSession:
             raise RuntimeError("session is desynchronized; restart llmos")
         if "\r" in cmd or "\n" in cmd:
             raise ValueError("llmos commands must be a single line")
-        payload = (cmd + "\r\n").encode("ascii")
+        try:
+            payload = (cmd + "\r\n").encode("ascii")
+        except UnicodeEncodeError as exc:
+            raise ValueError("llmos commands must be ASCII") from exc
         assert self.proc.stdin is not None
         try:
             self.proc.stdin.write(payload)
@@ -178,6 +181,9 @@ def mode_repl(session: LlmosSession) -> None:
             break
         try:
             resp = session.send(cmd)
+        except ValueError as e:
+            print(f"[bridge] invalid command: {e}", file=sys.stderr)
+            continue
         except TimeoutError as e:
             print(f"[bridge] timeout: {e}", file=sys.stderr)
             break
@@ -198,6 +204,9 @@ def mode_script(session: LlmosSession, path: Path) -> None:
         print(f"> {raw}")
         try:
             resp = session.send(raw)
+        except ValueError as e:
+            print(f"# invalid command: {e}")
+            break
         except TimeoutError as e:
             print(f"# timeout: {e}")
             break
@@ -262,6 +271,8 @@ def mode_ai(session: LlmosSession, task: str, step_limit: int = 20) -> None:
             return
         try:
             kernel_resp = session.send(cmd)
+        except ValueError as e:
+            kernel_resp = f"err code=bad_arg detail=\"{e}\""
         except TimeoutError as e:
             kernel_resp = f"err code=timeout detail=\"{e}\""
             print(f"< {kernel_resp}")
