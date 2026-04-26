@@ -295,12 +295,16 @@ def mode_ai(
     print(f"# banner: {session.banner}")
 
     for step in range(step_limit):
-        resp = client.messages.create(
-            model="claude-opus-4-7",
-            max_tokens=256,
-            system=system,
-            messages=messages,
-        )
+        try:
+            resp = client.messages.create(
+                model="claude-opus-4-7",
+                max_tokens=256,
+                system=system,
+                messages=messages,
+            )
+        except Exception as e:
+            print(f"# ai error: {e}")
+            return
         cmd = "".join(
             b.text for b in resp.content if getattr(b, "type", None) == "text"
         ).strip()
