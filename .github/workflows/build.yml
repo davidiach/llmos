@@ -521,6 +521,43 @@ jobs:
           check("flush")
           PY
 
+      - name: Check bridge stdout pump failures
+        run: |
+          python3 - <<'PY'
+          import queue
+
+          from demo.bridge import LlmosSession
+
+          class FailingStdout:
+              def __init__(self, chunks):
+                  self.chunks = list(chunks)
+
+              def read(self, size):
+                  if self.chunks:
+                      return self.chunks.pop(0)
+                  raise OSError("stdout pipe failed")
+
+          class FakeProc:
+              def __init__(self, chunks):
+                  self.stdout = FailingStdout(chunks)
+
+          def check(chunks):
+              session = object.__new__(LlmosSession)
+              session.proc = FakeProc(chunks)
+              session._stdout_queue = queue.Queue()
+              session._pump_stdout()
+              try:
+                  session._readline(timeout=0.01)
+              except EOFError as exc:
+                  if "partial" not in str(exc):
+                      raise SystemExit(f"unexpected EOF detail: {exc}")
+              else:
+                  raise SystemExit("expected EOFError after stdout pump failure")
+
+          check([])
+          check([b"o", b"k"])
+          PY
+
       - name: Upload image
         uses: actions/upload-artifact@v4
         with:

@@ -76,12 +76,16 @@ class LlmosSession:
     def _pump_stdout(self) -> None:
         """Read bytes from QEMU on a worker thread so timeouts stay enforceable."""
         assert self.proc.stdout is not None
-        while True:
-            ch = self.proc.stdout.read(1)
-            if not ch:
-                self._stdout_queue.put(None)
-                return
-            self._stdout_queue.put(ch)
+        try:
+            while True:
+                ch = self.proc.stdout.read(1)
+                if not ch:
+                    break
+                self._stdout_queue.put(ch)
+        except OSError:
+            pass
+        finally:
+            self._stdout_queue.put(None)
 
     def _readline(self, timeout: float = 2.0) -> str:
         """Read one \\r\\n-terminated line from the kernel, with a deadline."""
