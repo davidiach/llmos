@@ -120,8 +120,12 @@ class LlmosSession:
             raise RuntimeError("session is desynchronized; restart llmos")
         payload = (cmd + "\r\n").encode("ascii")
         assert self.proc.stdin is not None
-        self.proc.stdin.write(payload)
-        self.proc.stdin.flush()
+        try:
+            self.proc.stdin.write(payload)
+            self.proc.stdin.flush()
+        except OSError as exc:
+            self._sync_lost = True
+            raise EOFError("llmos stdin closed while sending command") from exc
         try:
             resp = self._readline(timeout=timeout)
         except (EOFError, TimeoutError):

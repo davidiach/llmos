@@ -467,6 +467,59 @@ jobs:
           check(False)
           PY
 
+      - name: Check bridge broken-pipe send
+        run: |
+          python3 - <<'PY'
+          from demo.bridge import LlmosSession
+
+          class FailingStdin:
+              def __init__(self, fail_on):
+                  self.fail_on = fail_on
+                  self.writes = []
+
+              def write(self, payload):
+                  self.writes.append(payload)
+                  if self.fail_on == "write":
+                      raise BrokenPipeError("stdin is closed")
+
+              def flush(self):
+                  if self.fail_on == "flush":
+                      raise BrokenPipeError("stdin is closed")
+
+          class FakeProc:
+              def __init__(self, fail_on):
+                  self.stdin = FailingStdin(fail_on)
+
+          def check(fail_on):
+              session = object.__new__(LlmosSession)
+              session.proc = FakeProc(fail_on)
+              session._sync_lost = False
+              session.log = []
+              session._readline = lambda timeout=2.0: (_ for _ in ()).throw(
+                  SystemExit("send tried to read after stdin failed")
+              )
+
+              try:
+                  session.send("help")
+              except EOFError as exc:
+                  if "stdin closed" not in str(exc):
+                      raise SystemExit(f"unexpected EOF detail: {exc}")
+              else:
+                  raise SystemExit("expected EOFError from broken stdin")
+
+              if not session._sync_lost:
+                  raise SystemExit("broken stdin did not desynchronize session")
+              try:
+                  session.send("help")
+              except RuntimeError:
+                  pass
+              else:
+                  raise SystemExit("desynchronized session accepted another send")
+
+          check("write")
+          check("flush")
+          PY
+
       - name: Upload image
         uses: actions/upload-artifact@v4
         with:
