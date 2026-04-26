@@ -125,6 +125,8 @@ class LlmosSession:
             raise RuntimeError("session is desynchronized; restart llmos")
         if "\r" in cmd or "\n" in cmd:
             raise ValueError("llmos commands must be a single line")
+        if any(ord(ch) < 0x20 or ord(ch) == 0x7F for ch in cmd):
+            raise ValueError("llmos commands must be printable ASCII")
         try:
             payload = (cmd + "\r\n").encode("ascii")
         except UnicodeEncodeError as exc:
