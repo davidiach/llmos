@@ -303,6 +303,14 @@ jobs:
             | grep -q '^< err code=bad_arg detail="usage: pci.config.read bdf=BB\.DD\.F offset=HH len=N"'
           grep -q "^< ok bdf=00\.03\.0 caps= truncated=0 malformed=0" /tmp/20_bdf_width_validation.txt
 
+          run_transcript 21_script_exact_lines
+          # Beat 21: script replay preserves request bytes instead of
+          # canonicalizing whitespace before the kernel sees it.
+          grep -A1 "^>  help" /tmp/21_script_exact_lines.txt \
+            | grep -q '^< err code=unknown_cmd detail="try `help`"'
+          grep -A1 "^> help unexpected=1" /tmp/21_script_exact_lines.txt \
+            | grep -q '^< err code=bad_arg detail="unexpected arguments"'
+
           # Capability-chain regression: attach a virtio PCI function because
           # the default i440FX devices expose no conventional capability list.
           # This locks down a non-empty chain, then reads bytes relative to the

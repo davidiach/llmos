@@ -216,7 +216,7 @@ Empty line to quit.
 python3 demo/bridge.py script demo/transcripts/01_cold_discovery.llmos
 ```
 
-The repo ships with twenty transcripts - the twenty demo beats described
+The repo ships with twenty-one transcripts - the twenty-one demo beats described
 below.
 
 ### Let Claude drive
@@ -230,7 +230,7 @@ The bridge hands Claude the boot banner and a tight system prompt, then
 lets it issue one command per turn. It runs until Claude emits `DONE` or
 the step limit is hit (default 20).
 
-## The demo, in twenty beats
+## The demo, in twenty-one beats
 
 **Beat 1 — Cold discovery.** Claude is told nothing about llmos except that
 `help` exists. It walks the introspection graph — `help`, then `describe`
@@ -405,18 +405,25 @@ must use fixed-width `BB.DD.F` fields, so shortened forms like `0.2.0` or
 
 Transcript: `demo/transcripts/20_bdf_width_validation.llmos`.
 
-Recorded outputs for all twenty live in `demo/recordings/`.
+**Beat 21 - Script exact-line replay.** Task: *keep the bridge honest as a
+protocol boundary*. The transcript starts one request with a leading space
+and verifies script mode sends that byte through instead of trimming it into
+`help`. It also keeps the ordinary bad-argument path for `help` visible.
+
+Transcript: `demo/transcripts/21_script_exact_lines.llmos`.
+
+Recorded outputs for all twenty-one live in `demo/recordings/`.
 
 ## Layout
 
 ```
 src/
   boot.asm          512 B — reset-and-retry MBR
-  kernel.asm        ~15 KB - protocol loop, twenty-nine primitives, VGA mirror
+  kernel.asm        ~16 KB - protocol loop, twenty-nine primitives, VGA mirror
 Makefile            nasm, size-asserted
 demo/
   bridge.py         repl / script / ai modes over QEMU -serial stdio
-  transcripts/*.llmos  the twenty demo beats, as replayable scripts
+  transcripts/*.llmos  the twenty-one demo beats, as replayable scripts
   recordings/*.txt  captured outputs of each transcript
 docs/
   PROTOCOL.md       wire spec

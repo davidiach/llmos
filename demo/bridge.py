@@ -114,7 +114,6 @@ class LlmosSession:
         """Send one command, return its single-line response."""
         if self._sync_lost:
             raise RuntimeError("session is desynchronized; restart llmos")
-        cmd = cmd.strip()
         payload = (cmd + "\r\n").encode("ascii")
         assert self.proc.stdin is not None
         self.proc.stdin.write(payload)
@@ -169,14 +168,13 @@ def mode_script(session: LlmosSession, path: Path) -> None:
     """Send every non-comment, non-empty line from the given file."""
     print(f"# {session.banner}")
     for raw in path.read_text().splitlines():
-        line = raw.strip()
-        if not line or line.startswith("#"):
-            if line.startswith("#"):
-                print(line)
+        if not raw or raw.startswith("#"):
+            if raw.startswith("#"):
+                print(raw)
             continue
-        print(f"> {line}")
+        print(f"> {raw}")
         try:
-            resp = session.send(line)
+            resp = session.send(raw)
         except TimeoutError as e:
             print(f"# timeout: {e}")
             break
