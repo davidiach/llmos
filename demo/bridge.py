@@ -216,12 +216,7 @@ def mode_script(session: LlmosSession, path: Path) -> None:
         print(f"< {resp}")
 
 
-def mode_ai(session: LlmosSession, task: str, step_limit: int = 20) -> None:
-    """Let Claude drive llmos to accomplish the given task.
-
-    The conversation is a single multi-turn chat: each turn Claude proposes
-    exactly one command, we execute it, we feed the response back, repeat.
-    """
+def make_anthropic_client():
     try:
         import anthropic
     except ImportError:
@@ -230,8 +225,22 @@ def mode_ai(session: LlmosSession, task: str, step_limit: int = 20) -> None:
     if "ANTHROPIC_API_KEY" not in os.environ:
         print("error: set ANTHROPIC_API_KEY", file=sys.stderr)
         sys.exit(2)
+    return anthropic.Anthropic()
 
-    client = anthropic.Anthropic()
+
+def mode_ai(
+    session: LlmosSession,
+    task: str,
+    step_limit: int = 20,
+    client=None,
+) -> None:
+    """Let Claude drive llmos to accomplish the given task.
+
+    The conversation is a single multi-turn chat: each turn Claude proposes
+    exactly one command, we execute it, we feed the response back, repeat.
+    """
+    if client is None:
+        client = make_anthropic_client()
     system = (
         "You are connected to an operating system called llmos over a serial "
         "protocol. You have never seen this OS before — figure it out from "
@@ -319,6 +328,7 @@ def main() -> int:
     sp_ai.add_argument("-n", "--limit", type=int, default=20, help="step limit")
     args = p.parse_args()
 
+    ai_client = make_anthropic_client() if args.mode == "ai" else None
     session = LlmosSession(image=args.image, qemu=args.qemu, qemu_args=args.qemu_arg)
     try:
         if args.mode == "repl":
@@ -326,7 +336,7 @@ def main() -> int:
         elif args.mode == "script":
             mode_script(session, args.file)
         elif args.mode == "ai":
-            mode_ai(session, args.task, step_limit=args.limit)
+            mode_ai(session, args.task, step_limit=args.limit, client=ai_client)
     finally:
         session.close()
     return 0
