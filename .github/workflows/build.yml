@@ -394,13 +394,14 @@ jobs:
       - name: Check bridge boot-timeout cleanup
         run: |
           python3 - <<'PY'
+          import os
           import subprocess
           import time
           from pathlib import Path
 
           from demo.bridge import LlmosSession
 
-          marker = "llmos-boot-timeout-probe"
+          marker = f"llmos-boot-timeout-probe-{os.getpid()}"
           try:
               LlmosSession(
                   Path("build/llmos.img"),
