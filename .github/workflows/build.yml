@@ -717,6 +717,40 @@ jobs:
               bridge.LlmosSession = old_session
           PY
 
+      - name: Check bridge image preflight
+        run: |
+          python3 - <<'PY'
+          import contextlib
+          import io
+          import sys
+
+          import demo.bridge as bridge
+
+          old_argv = sys.argv[:]
+          old_session = bridge.LlmosSession
+
+          def fail_session(*args, **kwargs):
+              raise SystemExit("LlmosSession should not be constructed before image preflight")
+
+          try:
+              bridge.LlmosSession = fail_session
+              sys.argv = ["bridge.py", "--image", "/tmp/missing.img", "repl"]
+              stderr = io.StringIO()
+              with contextlib.redirect_stderr(stderr):
+                  try:
+                      bridge.main()
+                  except SystemExit as exc:
+                      if exc.code != 2:
+                          raise SystemExit(f"unexpected exit code: {exc.code}")
+                  else:
+                      raise SystemExit("repl mode with a missing image should exit")
+              if "image file not found" not in stderr.getvalue():
+                  raise SystemExit(f"unexpected stderr: {stderr.getvalue()!r}")
+          finally:
+              sys.argv = old_argv
+              bridge.LlmosSession = old_session
+          PY
+
       - name: Upload image
         uses: actions/upload-artifact@v4
         with:
