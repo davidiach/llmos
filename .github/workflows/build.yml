@@ -608,6 +608,8 @@ jobs:
 
           check_rejected("help\nmem.query", "single line")
           check_rejected("help\rmem.query", "single line")
+          check_rejected("help" + chr(0) + " unexpected=1", "printable ASCII")
+          check_rejected("help" + chr(0x7F), "printable ASCII")
           check_rejected("help " + chr(0x2603), "ASCII")
 
           class RejectingSession:
