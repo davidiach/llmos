@@ -391,6 +391,38 @@ jobs:
           grep -q "^< ok bdf=01\.02\.0 bar=0 kind=m32 addr=[0-9a-f]\{8\} offset=0000 width=32 value=[0-9a-f]\{8\}" /tmp/pci_bridge_probe.txt
           echo "::endgroup::"
 
+      - name: Check bridge boot-timeout cleanup
+        run: |
+          python3 - <<'PY'
+          import subprocess
+          import time
+          from pathlib import Path
+
+          from demo.bridge import LlmosSession
+
+          marker = "llmos-boot-timeout-probe"
+          try:
+              LlmosSession(
+                  Path("build/llmos.img"),
+                  qemu_args=["-S", "-name", marker],
+                  boot_timeout=0.2,
+              )
+          except TimeoutError:
+              pass
+          else:
+              raise SystemExit("expected boot banner timeout")
+
+          time.sleep(0.2)
+          probe = subprocess.run(
+              ["pgrep", "-f", marker],
+              stdout=subprocess.PIPE,
+              text=True,
+              check=False,
+          )
+          if probe.stdout.strip():
+              raise SystemExit(f"qemu process leaked: {probe.stdout.strip()}")
+          PY
+
       - name: Upload image
         uses: actions/upload-artifact@v4
         with:
