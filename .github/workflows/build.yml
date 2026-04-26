@@ -679,6 +679,34 @@ jobs:
                   sys.modules.pop("anthropic", None)
           PY
 
+      - name: Check bridge AI client failure
+        run: |
+          python3 - <<'PY'
+          import contextlib
+          import io
+
+          from demo.bridge import mode_ai
+
+          class FakeSession:
+              banner = "# llmos test proto=1"
+
+              def send(self, cmd):
+                  raise SystemExit("send should not be called after client failure")
+
+          class FailingMessages:
+              def create(self, **kwargs):
+                  raise RuntimeError("anthropic service unavailable")
+
+          class FailingClient:
+              messages = FailingMessages()
+
+          out = io.StringIO()
+          with contextlib.redirect_stdout(out):
+              mode_ai(FakeSession(), "task", client=FailingClient())
+          if "# ai error: anthropic service unavailable" not in out.getvalue():
+              raise SystemExit(f"AI client failure was not reported cleanly: {out.getvalue()!r}")
+          PY
+
       - name: Check bridge script preflight
         run: |
           python3 - <<'PY'
