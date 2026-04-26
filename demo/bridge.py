@@ -137,8 +137,11 @@ class LlmosSession:
             self.proc.terminate()
             self.proc.wait(timeout=1.0)
         except subprocess.TimeoutExpired:
-            self.proc.kill()
-            self.proc.wait(timeout=1.0)
+            try:
+                self.proc.kill()
+                self.proc.wait(timeout=1.0)
+            except Exception:
+                pass
         except Exception:
             try:
                 self.proc.kill()
