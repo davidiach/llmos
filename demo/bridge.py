@@ -170,6 +170,13 @@ class LlmosSession:
 # Modes
 # ---------------------------------------------------------------------------
 
+def command_for_log(cmd: str) -> str:
+    """Return a terminal-safe representation of a command line."""
+    if all(0x20 <= ord(ch) <= 0x7E for ch in cmd):
+        return cmd
+    return ascii(cmd)
+
+
 def mode_repl(session: LlmosSession) -> None:
     """Interactive REPL. Type commands, see responses."""
     print(f"[bridge] connected. kernel said: {session.banner}")
@@ -210,7 +217,7 @@ def mode_script(
             if raw.startswith("#"):
                 print(raw)
             continue
-        print(f"> {raw}")
+        print(f"> {command_for_log(raw)}")
         try:
             resp = session.send(raw)
         except ValueError as e:
@@ -317,7 +324,7 @@ def mode_ai(
         if not cmd:
             print("# ai error: empty command")
             return
-        print(f"> {cmd}")
+        print(f"> {command_for_log(cmd)}")
         if cmd.upper() == "DONE":
             print("# claude signalled task complete")
             return

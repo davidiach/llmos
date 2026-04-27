@@ -565,7 +565,7 @@ jobs:
           import io
           from pathlib import Path
 
-          from demo.bridge import LlmosSession, mode_script
+          from demo.bridge import LlmosSession, mode_ai, mode_script
 
           class RecordingStdin:
               def __init__(self):
@@ -623,8 +623,32 @@ jobs:
           out = io.StringIO()
           with contextlib.redirect_stdout(out):
               mode_script(RejectingSession(), script)
-          if "# invalid command: llmos commands must be ASCII" not in out.getvalue():
-              raise SystemExit(f"script mode did not report validation failure: {out.getvalue()!r}")
+          script_output = out.getvalue()
+          if "# invalid command: llmos commands must be ASCII" not in script_output:
+              raise SystemExit(f"script mode did not report validation failure: {script_output!r}")
+          if chr(0x2603) in script_output or "\\u2603" not in script_output:
+              raise SystemExit(f"script mode did not escape invalid command output: {script_output!r}")
+
+          class EscapedTextBlock:
+              type = "text"
+              text = "help " + chr(0x1B) + "[31m"
+
+          class EscapedResponse:
+              content = [EscapedTextBlock()]
+
+          class EscapedMessages:
+              def create(self, **kwargs):
+                  return EscapedResponse()
+
+          class EscapedClient:
+              messages = EscapedMessages()
+
+          out = io.StringIO()
+          with contextlib.redirect_stdout(out):
+              mode_ai(RejectingSession(), "task", step_limit=1, client=EscapedClient())
+          ai_output = out.getvalue()
+          if chr(0x1B) in ai_output or "\\x1b" not in ai_output:
+              raise SystemExit(f"AI mode did not escape invalid command output: {ai_output!r}")
           PY
 
       - name: Check bridge AI preflight
