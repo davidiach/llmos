@@ -305,9 +305,13 @@ def mode_ai(
         except Exception as e:
             print(f"# ai error: {e}")
             return
-        cmd = "".join(
-            b.text for b in resp.content if getattr(b, "type", None) == "text"
-        ).strip()
+        try:
+            cmd = "".join(
+                b.text for b in resp.content if getattr(b, "type", None) == "text"
+            ).strip()
+        except Exception as e:
+            print(f"# ai error: {e}")
+            return
         # Claude may wrap the command; grab the last non-empty line.
         cmd = [l.strip() for l in cmd.splitlines() if l.strip()][-1] if cmd else ""
         print(f"> {cmd}")

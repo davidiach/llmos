@@ -707,6 +707,40 @@ jobs:
               raise SystemExit(f"AI client failure was not reported cleanly: {out.getvalue()!r}")
           PY
 
+      - name: Check bridge AI response failure
+        run: |
+          python3 - <<'PY'
+          import contextlib
+          import io
+
+          from demo.bridge import mode_ai
+
+          class FakeSession:
+              banner = "# llmos test proto=1"
+
+              def send(self, cmd):
+                  raise SystemExit("send should not be called after response failure")
+
+          class BrokenTextBlock:
+              type = "text"
+
+          class BrokenResponse:
+              content = [BrokenTextBlock()]
+
+          class BrokenMessages:
+              def create(self, **kwargs):
+                  return BrokenResponse()
+
+          class BrokenClient:
+              messages = BrokenMessages()
+
+          out = io.StringIO()
+          with contextlib.redirect_stdout(out):
+              mode_ai(FakeSession(), "task", client=BrokenClient())
+          if "# ai error:" not in out.getvalue():
+              raise SystemExit(f"AI response failure was not reported cleanly: {out.getvalue()!r}")
+          PY
+
       - name: Check bridge script preflight
         run: |
           python3 - <<'PY'
