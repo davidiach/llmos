@@ -741,6 +741,41 @@ jobs:
               raise SystemExit(f"AI response failure was not reported cleanly: {out.getvalue()!r}")
           PY
 
+      - name: Check bridge AI empty command
+        run: |
+          python3 - <<'PY'
+          import contextlib
+          import io
+
+          from demo.bridge import mode_ai
+
+          class FakeSession:
+              banner = "# llmos test proto=1"
+
+              def send(self, cmd):
+                  raise SystemExit("send should not be called after empty command")
+
+          class EmptyTextBlock:
+              type = "text"
+              text = " \n\t "
+
+          class EmptyResponse:
+              content = [EmptyTextBlock()]
+
+          class EmptyMessages:
+              def create(self, **kwargs):
+                  return EmptyResponse()
+
+          class EmptyClient:
+              messages = EmptyMessages()
+
+          out = io.StringIO()
+          with contextlib.redirect_stdout(out):
+              mode_ai(FakeSession(), "task", client=EmptyClient())
+          if "# ai error: empty command" not in out.getvalue():
+              raise SystemExit(f"empty AI command was not reported cleanly: {out.getvalue()!r}")
+          PY
+
       - name: Check bridge script preflight
         run: |
           python3 - <<'PY'

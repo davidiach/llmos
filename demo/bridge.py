@@ -314,8 +314,11 @@ def mode_ai(
             return
         # Claude may wrap the command; grab the last non-empty line.
         cmd = [l.strip() for l in cmd.splitlines() if l.strip()][-1] if cmd else ""
+        if not cmd:
+            print("# ai error: empty command")
+            return
         print(f"> {cmd}")
-        if cmd.upper() == "DONE" or not cmd:
+        if cmd.upper() == "DONE":
             print("# claude signalled task complete")
             return
         try:
