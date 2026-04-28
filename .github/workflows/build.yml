@@ -974,6 +974,52 @@ jobs:
               raise SystemExit(f"wrapped AI command was not logged cleanly: {out.getvalue()!r}")
           PY
 
+      - name: Check bridge AI split text blocks
+        run: |
+          python3 - <<'PY'
+          import contextlib
+          import io
+
+          from demo.bridge import mode_ai
+
+          class FakeSession:
+              banner = "# llmos test proto=1"
+
+              def __init__(self):
+                  self.commands = []
+
+              def send(self, cmd):
+                  self.commands.append(cmd)
+                  return "ok primitives=help"
+
+          class ProseTextBlock:
+              type = "text"
+              text = "Here is the command:"
+
+          class CommandTextBlock:
+              type = "text"
+              text = "`help`"
+
+          class SplitResponse:
+              content = [ProseTextBlock(), CommandTextBlock()]
+
+          class SplitMessages:
+              def create(self, **kwargs):
+                  return SplitResponse()
+
+          class SplitClient:
+              messages = SplitMessages()
+
+          session = FakeSession()
+          out = io.StringIO()
+          with contextlib.redirect_stdout(out):
+              mode_ai(session, "task", step_limit=1, client=SplitClient())
+          if session.commands != ["help"]:
+              raise SystemExit(f"split AI text blocks were fused: {session.commands!r}")
+          if "> help" not in out.getvalue():
+              raise SystemExit(f"split AI command was not logged cleanly: {out.getvalue()!r}")
+          PY
+
       - name: Check bridge AI ambiguous command block
         run: |
           python3 - <<'PY'
