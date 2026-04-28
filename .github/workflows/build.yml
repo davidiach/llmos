@@ -905,6 +905,64 @@ jobs:
               raise SystemExit(f"AI client failure was not reported cleanly: {out.getvalue()!r}")
           PY
 
+      - name: Check bridge AI client failure exit
+        run: |
+          python3 - <<'PY'
+          import contextlib
+          import io
+          import sys
+
+          import demo.bridge as bridge
+
+          class FakeSession:
+              banner = "# llmos test proto=1"
+
+              def __init__(self):
+                  self.closed = False
+
+              def send(self, cmd):
+                  raise SystemExit("send should not be called after client failure")
+
+              def close(self):
+                  self.closed = True
+
+          class FailingMessages:
+              def create(self, **kwargs):
+                  raise RuntimeError("anthropic service unavailable")
+
+          class FailingClient:
+              messages = FailingMessages()
+
+          old_argv = sys.argv[:]
+          old_client = bridge.make_anthropic_client
+          old_image = bridge.preflight_image_path
+          old_qemu = bridge.preflight_qemu
+          old_session = bridge.LlmosSession
+          fake_session = FakeSession()
+
+          try:
+              bridge.make_anthropic_client = lambda: FailingClient()
+              bridge.preflight_image_path = lambda path: None
+              bridge.preflight_qemu = lambda qemu: None
+              bridge.LlmosSession = lambda *args, **kwargs: fake_session
+              sys.argv = ["bridge.py", "ai", "task"]
+              out = io.StringIO()
+              with contextlib.redirect_stdout(out):
+                  rc = bridge.main()
+              if rc != 1:
+                  raise SystemExit(f"AI client failure exited {rc}, expected 1")
+              if "# ai error: anthropic service unavailable" not in out.getvalue():
+                  raise SystemExit(f"AI client failure was not reported cleanly: {out.getvalue()!r}")
+              if not fake_session.closed:
+                  raise SystemExit("session was not closed after AI client failure")
+          finally:
+              sys.argv = old_argv
+              bridge.make_anthropic_client = old_client
+              bridge.preflight_image_path = old_image
+              bridge.preflight_qemu = old_qemu
+              bridge.LlmosSession = old_session
+          PY
+
       - name: Check bridge AI response failure
         run: |
           python3 - <<'PY'
