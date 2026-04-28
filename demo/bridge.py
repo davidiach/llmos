@@ -200,6 +200,8 @@ def extract_ai_command(text: str) -> str:
 
     if fenced_blocks:
         lines = [line.strip() for line in fenced_blocks[-1] if line.strip()]
+        if len(lines) > 1:
+            raise ValueError("ambiguous command block")
     else:
         lines = [line.strip() for line in text.splitlines() if line.strip()]
     if not lines:
@@ -352,7 +354,11 @@ def mode_ai(
         except Exception as e:
             print(f"# ai error: {e}")
             return
-        cmd = extract_ai_command(cmd)
+        try:
+            cmd = extract_ai_command(cmd)
+        except ValueError as e:
+            print(f"# ai error: {e}")
+            return
         if not cmd:
             print("# ai error: empty command")
             return
