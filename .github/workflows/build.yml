@@ -1308,6 +1308,57 @@ jobs:
               bridge.LlmosSession = old_session
           PY
 
+      - name: Check bridge script failure exit
+        run: |
+          python3 - <<'PY'
+          import contextlib
+          import io
+          import sys
+          from pathlib import Path
+
+          import demo.bridge as bridge
+
+          class FakeSession:
+              banner = "# llmos test proto=1"
+
+              def __init__(self):
+                  self.closed = False
+
+              def send(self, cmd):
+                  raise ValueError("bad script command")
+
+              def close(self):
+                  self.closed = True
+
+          old_argv = sys.argv[:]
+          old_image = bridge.preflight_image_path
+          old_qemu = bridge.preflight_qemu
+          old_session = bridge.LlmosSession
+          fake_session = FakeSession()
+          script = Path("/tmp/llmos-bad-command.llmos")
+          script.write_text("bad\n", encoding="utf-8")
+
+          try:
+              bridge.preflight_image_path = lambda path: None
+              bridge.preflight_qemu = lambda qemu: None
+              bridge.LlmosSession = lambda *args, **kwargs: fake_session
+              sys.argv = ["bridge.py", "script", str(script)]
+              out = io.StringIO()
+              with contextlib.redirect_stdout(out):
+                  rc = bridge.main()
+              if rc != 1:
+                  raise SystemExit(f"script command failure exited {rc}, expected 1")
+              if "# invalid command: bad script command" not in out.getvalue():
+                  raise SystemExit(f"script command failure was not reported cleanly: {out.getvalue()!r}")
+              if not fake_session.closed:
+                  raise SystemExit("session was not closed after script command failure")
+          finally:
+              sys.argv = old_argv
+              bridge.preflight_image_path = old_image
+              bridge.preflight_qemu = old_qemu
+              bridge.LlmosSession = old_session
+          PY
+
       - name: Check bridge image preflight
         run: |
           python3 - <<'PY'
