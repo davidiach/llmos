@@ -302,6 +302,12 @@ def preflight_qemu(qemu: str) -> None:
         sys.exit(2)
 
 
+def preflight_ai_limit(limit: int) -> None:
+    if limit < 1:
+        print("error: AI step limit must be at least 1", file=sys.stderr)
+        sys.exit(2)
+
+
 def mode_ai(
     session: LlmosSession,
     task: str,
@@ -416,6 +422,8 @@ def main() -> int:
     sp_ai.add_argument("-n", "--limit", type=int, default=20, help="step limit")
     args = p.parse_args()
 
+    if args.mode == "ai":
+        preflight_ai_limit(args.limit)
     script_lines = load_script_lines(args.file) if args.mode == "script" else None
     ai_client = make_anthropic_client() if args.mode == "ai" else None
     preflight_image_path(args.image)
