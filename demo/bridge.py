@@ -270,13 +270,13 @@ def mode_script(
 
 
 def make_anthropic_client():
+    if "ANTHROPIC_API_KEY" not in os.environ:
+        print("error: set ANTHROPIC_API_KEY", file=sys.stderr)
+        sys.exit(2)
     try:
         import anthropic
     except ImportError:
         print("error: pip install anthropic", file=sys.stderr)
-        sys.exit(2)
-    if "ANTHROPIC_API_KEY" not in os.environ:
-        print("error: set ANTHROPIC_API_KEY", file=sys.stderr)
         sys.exit(2)
     return anthropic.Anthropic()
 
