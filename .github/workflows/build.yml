@@ -424,6 +424,32 @@ jobs:
               raise SystemExit(f"qemu process leaked: {probe.stdout.strip()}")
           PY
 
+      - name: Check bridge boot-timeout precision
+        run: |
+          python3 - <<'PY'
+          from demo.bridge import LlmosSession
+
+          session = object.__new__(LlmosSession)
+          timeouts = []
+
+          def fake_readline(timeout):
+              timeouts.append(timeout)
+              raise TimeoutError("synthetic banner timeout")
+
+          session._readline = fake_readline
+          try:
+              session._await_banner(0.01)
+          except TimeoutError:
+              pass
+          else:
+              raise SystemExit("expected synthetic banner timeout")
+
+          if not timeouts:
+              raise SystemExit("_await_banner did not attempt to read")
+          if timeouts[0] > 0.05:
+              raise SystemExit(f"boot timeout was inflated: {timeouts[0]}")
+          PY
+
       - name: Check bridge forced-close wait
         run: |
           python3 - <<'PY'

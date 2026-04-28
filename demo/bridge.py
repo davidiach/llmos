@@ -114,7 +114,7 @@ class LlmosSession:
         """Read lines until we see a `#`-prefixed system banner."""
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
-            line = self._readline(timeout=max(0.2, deadline - time.monotonic()))
+            line = self._readline(timeout=deadline - time.monotonic())
             if line.startswith("#"):
                 return line
         raise TimeoutError("llmos never produced a ready banner")
