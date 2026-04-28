@@ -26,7 +26,7 @@ import time
 from pathlib import Path
 
 
-DEFAULT_ANTHROPIC_MODEL = "claude-opus-4-1-20250805"
+DEFAULT_ANTHROPIC_MODEL = "claude-opus-4-7"
 
 
 class LlmosSession:
