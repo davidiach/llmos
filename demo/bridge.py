@@ -26,6 +26,9 @@ import time
 from pathlib import Path
 
 
+DEFAULT_ANTHROPIC_MODEL = "claude-opus-4-1-20250805"
+
+
 class LlmosSession:
     """A running llmos instance. Send commands, get back response lines."""
 
@@ -348,13 +351,14 @@ def mode_ai(
     )
     prompt = f"Task: {task}\n\nKernel banner on boot: {session.banner}\n\nWhat is your first command?"
     messages = [{"role": "user", "content": prompt}]
+    model = os.environ.get("ANTHROPIC_MODEL", DEFAULT_ANTHROPIC_MODEL)
     print(f"# task: {task}")
     print(f"# banner: {session.banner}")
 
     for step in range(step_limit):
         try:
             resp = client.messages.create(
-                model="claude-opus-4-7",
+                model=model,
                 max_tokens=256,
                 system=system,
                 messages=messages,

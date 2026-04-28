@@ -823,6 +823,68 @@ jobs:
                   os.environ.pop("ANTHROPIC_API_KEY", None)
           PY
 
+      - name: Check bridge AI model selection
+        run: |
+          python3 - <<'PY'
+          import contextlib
+          import io
+          import os
+
+          import demo.bridge as bridge
+
+          class FakeSession:
+              banner = "# llmos test proto=1"
+
+              def send(self, cmd):
+                  raise SystemExit("send should not be called after DONE")
+
+          class DoneTextBlock:
+              type = "text"
+              text = "DONE"
+
+          class DoneResponse:
+              content = [DoneTextBlock()]
+
+          class RecordingMessages:
+              def __init__(self):
+                  self.models = []
+
+              def create(self, **kwargs):
+                  self.models.append(kwargs["model"])
+                  return DoneResponse()
+
+          class RecordingClient:
+              def __init__(self):
+                  self.messages = RecordingMessages()
+
+          old_model = os.environ.pop("ANTHROPIC_MODEL", None)
+
+          try:
+              default_client = RecordingClient()
+              out = io.StringIO()
+              with contextlib.redirect_stdout(out):
+                  rc = bridge.mode_ai(FakeSession(), "task", client=default_client)
+              if rc != 0:
+                  raise SystemExit(f"default model DONE exited {rc}, expected 0")
+              if default_client.messages.models != [bridge.DEFAULT_ANTHROPIC_MODEL]:
+                  raise SystemExit(f"default AI model was not used: {default_client.messages.models!r}")
+
+              override_client = RecordingClient()
+              os.environ["ANTHROPIC_MODEL"] = "claude-test-model"
+              out = io.StringIO()
+              with contextlib.redirect_stdout(out):
+                  rc = bridge.mode_ai(FakeSession(), "task", client=override_client)
+              if rc != 0:
+                  raise SystemExit(f"override model DONE exited {rc}, expected 0")
+              if override_client.messages.models != ["claude-test-model"]:
+                  raise SystemExit(f"ANTHROPIC_MODEL override was not used: {override_client.messages.models!r}")
+          finally:
+              if old_model is not None:
+                  os.environ["ANTHROPIC_MODEL"] = old_model
+              else:
+                  os.environ.pop("ANTHROPIC_MODEL", None)
+          PY
+
       - name: Check bridge AI limit preflight
         run: |
           python3 - <<'PY'
