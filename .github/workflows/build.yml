@@ -677,6 +677,58 @@ jobs:
               raise SystemExit(f"AI mode did not escape invalid command output: {ai_output!r}")
           PY
 
+      - name: Check bridge REPL disconnect exit
+        run: |
+          python3 - <<'PY'
+          import builtins
+          import contextlib
+          import io
+          import sys
+
+          import demo.bridge as bridge
+
+          class FakeSession:
+              banner = "# llmos test proto=1"
+
+              def __init__(self):
+                  self.closed = False
+
+              def send(self, cmd):
+                  raise RuntimeError("link lost")
+
+              def close(self):
+                  self.closed = True
+
+          old_argv = sys.argv[:]
+          old_input = builtins.input
+          old_image = bridge.preflight_image_path
+          old_qemu = bridge.preflight_qemu
+          old_session = bridge.LlmosSession
+          fake_session = FakeSession()
+
+          try:
+              bridge.preflight_image_path = lambda path: None
+              bridge.preflight_qemu = lambda qemu: None
+              bridge.LlmosSession = lambda *args, **kwargs: fake_session
+              builtins.input = lambda prompt="": "help"
+              sys.argv = ["bridge.py", "repl"]
+              stderr = io.StringIO()
+              with contextlib.redirect_stderr(stderr):
+                  rc = bridge.main()
+              if rc != 1:
+                  raise SystemExit(f"REPL disconnect exited {rc}, expected 1")
+              if "[bridge] disconnected: link lost" not in stderr.getvalue():
+                  raise SystemExit(f"REPL disconnect was not reported cleanly: {stderr.getvalue()!r}")
+              if not fake_session.closed:
+                  raise SystemExit("session was not closed after REPL disconnect")
+          finally:
+              sys.argv = old_argv
+              builtins.input = old_input
+              bridge.preflight_image_path = old_image
+              bridge.preflight_qemu = old_qemu
+              bridge.LlmosSession = old_session
+          PY
+
       - name: Check bridge AI preflight
         run: |
           python3 - <<'PY'

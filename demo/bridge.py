@@ -214,7 +214,7 @@ def extract_ai_command(text: str) -> str:
     return cmd
 
 
-def mode_repl(session: LlmosSession) -> None:
+def mode_repl(session: LlmosSession) -> int:
     """Interactive REPL. Type commands, see responses."""
     print(f"[bridge] connected. kernel said: {session.banner}")
     print("[bridge] type a command (empty line to quit)")
@@ -223,9 +223,9 @@ def mode_repl(session: LlmosSession) -> None:
             cmd = input("> ").strip()
         except (EOFError, KeyboardInterrupt):
             print()
-            break
+            return 0
         if not cmd:
-            break
+            return 0
         try:
             resp = session.send(cmd)
         except ValueError as e:
@@ -233,10 +233,10 @@ def mode_repl(session: LlmosSession) -> None:
             continue
         except TimeoutError as e:
             print(f"[bridge] timeout: {e}", file=sys.stderr)
-            break
+            return 1
         except (EOFError, RuntimeError) as e:
             print(f"[bridge] disconnected: {e}", file=sys.stderr)
-            break
+            return 1
         print(f"< {resp}")
 
 
@@ -446,7 +446,7 @@ def main() -> int:
         return 2
     try:
         if args.mode == "repl":
-            mode_repl(session)
+            return mode_repl(session)
         elif args.mode == "script":
             return mode_script(session, args.file, script_lines)
         elif args.mode == "ai":
