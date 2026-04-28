@@ -177,6 +177,39 @@ def command_for_log(cmd: str) -> str:
     return ascii(cmd)
 
 
+def extract_ai_command(text: str) -> str:
+    """Extract the command from an AI text response."""
+    fenced_blocks: list[list[str]] = []
+    block: list[str] = []
+    in_fence = False
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("```"):
+            if in_fence:
+                fenced_blocks.append(block)
+                block = []
+                in_fence = False
+            else:
+                block = []
+                in_fence = True
+            continue
+        if in_fence:
+            block.append(line)
+    if in_fence:
+        fenced_blocks.append(block)
+
+    if fenced_blocks:
+        lines = [line.strip() for line in fenced_blocks[-1] if line.strip()]
+    else:
+        lines = [line.strip() for line in text.splitlines() if line.strip()]
+    if not lines:
+        return ""
+    cmd = lines[-1]
+    if len(cmd) >= 2 and cmd.startswith("`") and cmd.endswith("`"):
+        cmd = cmd.strip("`").strip()
+    return cmd
+
+
 def mode_repl(session: LlmosSession) -> None:
     """Interactive REPL. Type commands, see responses."""
     print(f"[bridge] connected. kernel said: {session.banner}")
@@ -319,8 +352,7 @@ def mode_ai(
         except Exception as e:
             print(f"# ai error: {e}")
             return
-        # Claude may wrap the command; grab the last non-empty line.
-        cmd = [l.strip() for l in cmd.splitlines() if l.strip()][-1] if cmd else ""
+        cmd = extract_ai_command(cmd)
         if not cmd:
             print("# ai error: empty command")
             return
