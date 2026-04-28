@@ -756,6 +756,59 @@ jobs:
                   sys.modules.pop("anthropic", None)
           PY
 
+      - name: Check bridge AI task preflight
+        run: |
+          python3 - <<'PY'
+          import contextlib
+          import io
+          import os
+          import sys
+
+          import demo.bridge as bridge
+
+          old_argv = sys.argv[:]
+          old_session = bridge.LlmosSession
+          old_key = os.environ.get("ANTHROPIC_API_KEY")
+          had_anthropic = "anthropic" in sys.modules
+          old_anthropic = sys.modules.get("anthropic")
+
+          class FakeAnthropic:
+              @staticmethod
+              def Anthropic():
+                  raise SystemExit("Anthropic client should not be constructed for empty AI task")
+
+          def fail_session(*args, **kwargs):
+              raise SystemExit("LlmosSession should not be constructed before AI task preflight")
+
+          try:
+              os.environ["ANTHROPIC_API_KEY"] = "test-key"
+              sys.modules["anthropic"] = FakeAnthropic
+              bridge.LlmosSession = fail_session
+              sys.argv = ["bridge.py", "--image", "/tmp/missing.img", "ai", "   "]
+              stderr = io.StringIO()
+              with contextlib.redirect_stderr(stderr):
+                  try:
+                      bridge.main()
+                  except SystemExit as exc:
+                      if exc.code != 2:
+                          raise SystemExit(f"unexpected exit code: {exc.code}")
+                  else:
+                      raise SystemExit("AI mode with an empty task should exit")
+              if "AI task" not in stderr.getvalue():
+                  raise SystemExit(f"unexpected stderr: {stderr.getvalue()!r}")
+          finally:
+              sys.argv = old_argv
+              bridge.LlmosSession = old_session
+              if old_key is not None:
+                  os.environ["ANTHROPIC_API_KEY"] = old_key
+              else:
+                  os.environ.pop("ANTHROPIC_API_KEY", None)
+              if had_anthropic:
+                  sys.modules["anthropic"] = old_anthropic
+              else:
+                  sys.modules.pop("anthropic", None)
+          PY
+
       - name: Check bridge AI client failure
         run: |
           python3 - <<'PY'

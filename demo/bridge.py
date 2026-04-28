@@ -308,6 +308,12 @@ def preflight_ai_limit(limit: int) -> None:
         sys.exit(2)
 
 
+def preflight_ai_task(task: str) -> None:
+    if not task.strip():
+        print("error: AI task must not be empty", file=sys.stderr)
+        sys.exit(2)
+
+
 def mode_ai(
     session: LlmosSession,
     task: str,
@@ -424,6 +430,7 @@ def main() -> int:
 
     if args.mode == "ai":
         preflight_ai_limit(args.limit)
+        preflight_ai_task(args.task)
     script_lines = load_script_lines(args.file) if args.mode == "script" else None
     ai_client = make_anthropic_client() if args.mode == "ai" else None
     preflight_image_path(args.image)
