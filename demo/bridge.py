@@ -196,7 +196,7 @@ def extract_ai_command(text: str) -> str:
         if in_fence:
             block.append(line)
     if in_fence:
-        fenced_blocks.append(block)
+        raise ValueError("unterminated command block")
 
     if fenced_blocks:
         lines = [line.strip() for line in fenced_blocks[-1] if line.strip()]

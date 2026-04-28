@@ -877,6 +877,41 @@ jobs:
               raise SystemExit(f"ambiguous command block was not rejected: {out.getvalue()!r}")
           PY
 
+      - name: Check bridge AI unterminated command block
+        run: |
+          python3 - <<'PY'
+          import contextlib
+          import io
+
+          from demo.bridge import mode_ai
+
+          class FakeSession:
+              banner = "# llmos test proto=1"
+
+              def send(self, cmd):
+                  raise SystemExit("send should not be called for unterminated command block")
+
+          class UnterminatedTextBlock:
+              type = "text"
+              text = "```llmos\nhelp"
+
+          class UnterminatedResponse:
+              content = [UnterminatedTextBlock()]
+
+          class UnterminatedMessages:
+              def create(self, **kwargs):
+                  return UnterminatedResponse()
+
+          class UnterminatedClient:
+              messages = UnterminatedMessages()
+
+          out = io.StringIO()
+          with contextlib.redirect_stdout(out):
+              mode_ai(FakeSession(), "task", step_limit=1, client=UnterminatedClient())
+          if "# ai error: unterminated command block" not in out.getvalue():
+              raise SystemExit(f"unterminated command block was not rejected: {out.getvalue()!r}")
+          PY
+
       - name: Check bridge script preflight
         run: |
           python3 - <<'PY'
