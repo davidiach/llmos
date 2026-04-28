@@ -321,7 +321,7 @@ def mode_ai(
     task: str,
     step_limit: int = 20,
     client=None,
-) -> None:
+) -> int:
     """Let Claude drive llmos to accomplish the given task.
 
     The conversation is a single multi-turn chat: each turn Claude proposes
@@ -360,26 +360,26 @@ def mode_ai(
             )
         except Exception as e:
             print(f"# ai error: {e}")
-            return
+            return 1
         try:
             cmd = "\n".join(
                 b.text for b in resp.content if getattr(b, "type", None) == "text"
             ).strip()
         except Exception as e:
             print(f"# ai error: {e}")
-            return
+            return 1
         try:
             cmd = extract_ai_command(cmd)
         except ValueError as e:
             print(f"# ai error: {e}")
-            return
+            return 1
         if not cmd:
             print("# ai error: empty command")
-            return
+            return 1
         print(f"> {command_for_log(cmd)}")
         if cmd.upper() == "DONE":
             print("# claude signalled task complete")
-            return
+            return 0
         try:
             kernel_resp = session.send(cmd)
         except ValueError as e:
@@ -388,14 +388,15 @@ def mode_ai(
             kernel_resp = f"err code=timeout detail=\"{e}\""
             print(f"< {kernel_resp}")
             print("# session desynchronized after timeout")
-            return
+            return 1
         except (EOFError, RuntimeError) as e:
             print(f"# disconnected: {e}")
-            return
+            return 1
         print(f"< {kernel_resp}")
         messages.append({"role": "assistant", "content": cmd})
         messages.append({"role": "user", "content": kernel_resp})
     print("# step limit reached")
+    return 1
 
 
 # ---------------------------------------------------------------------------
@@ -448,7 +449,7 @@ def main() -> int:
         elif args.mode == "script":
             mode_script(session, args.file, script_lines)
         elif args.mode == "ai":
-            mode_ai(session, args.task, step_limit=args.limit, client=ai_client)
+            return mode_ai(session, args.task, step_limit=args.limit, client=ai_client)
     finally:
         session.close()
     return 0
