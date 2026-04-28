@@ -2517,16 +2517,14 @@ respond:
     call    respond_end
     ret
 
-; respond_end: terminate a partially-written response line. Mirrors the
-; entire partial response back out to VGA by re-reading... no, that's
-; expensive. Simpler: we mirror inline in every serial_put* helper.
-; Actually simpler still: we only mirror the final completed line.
-; For now: emit CRLF on serial AND VGA.
+; respond_end: terminate a partially-written response line. Response bytes are
+; mirrored inline by serial_put* helpers, so emit the serial CRLF raw and then
+; advance VGA exactly once.
 respond_end:
     mov     al, 13
-    call    serial_putc
+    call    serial_putc_raw
     mov     al, 10
-    call    serial_putc
+    call    serial_putc_raw
     call    vga_newline
     ret
 
