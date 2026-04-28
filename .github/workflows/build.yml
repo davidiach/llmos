@@ -729,6 +729,48 @@ jobs:
                   sys.modules.pop("anthropic", None)
           PY
 
+      - name: Check bridge AI key preflight before import
+        run: |
+          python3 - <<'PY'
+          import builtins
+          import contextlib
+          import io
+          import os
+
+          import demo.bridge as bridge
+
+          old_key = os.environ.pop("ANTHROPIC_API_KEY", None)
+          old_import = builtins.__import__
+
+          def fail_anthropic_import(name, *args, **kwargs):
+              if name == "anthropic":
+                  raise ImportError("synthetic missing anthropic")
+              return old_import(name, *args, **kwargs)
+
+          try:
+              builtins.__import__ = fail_anthropic_import
+              stderr = io.StringIO()
+              with contextlib.redirect_stderr(stderr):
+                  try:
+                      bridge.make_anthropic_client()
+                  except SystemExit as exc:
+                      if exc.code != 2:
+                          raise SystemExit(f"unexpected exit code: {exc.code}")
+                  else:
+                      raise SystemExit("missing ANTHROPIC_API_KEY should exit")
+              err = stderr.getvalue()
+              if "ANTHROPIC_API_KEY" not in err:
+                  raise SystemExit(f"missing key did not win preflight: {err!r}")
+              if "pip install anthropic" in err:
+                  raise SystemExit(f"anthropic import ran before key preflight: {err!r}")
+          finally:
+              builtins.__import__ = old_import
+              if old_key is not None:
+                  os.environ["ANTHROPIC_API_KEY"] = old_key
+              else:
+                  os.environ.pop("ANTHROPIC_API_KEY", None)
+          PY
+
       - name: Check bridge AI limit preflight
         run: |
           python3 - <<'PY'
