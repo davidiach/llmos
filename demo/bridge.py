@@ -244,7 +244,7 @@ def mode_script(
     session: LlmosSession,
     path: Path,
     lines: list[str] | None = None,
-) -> None:
+) -> int:
     """Send every non-comment, non-empty line from the given file."""
     if lines is None:
         lines = path.read_text(encoding="utf-8").splitlines()
@@ -259,14 +259,15 @@ def mode_script(
             resp = session.send(raw)
         except ValueError as e:
             print(f"# invalid command: {e}")
-            break
+            return 1
         except TimeoutError as e:
             print(f"# timeout: {e}")
-            break
+            return 1
         except (EOFError, RuntimeError) as e:
             print(f"# disconnected: {e}")
-            break
+            return 1
         print(f"< {resp}")
+    return 0
 
 
 def make_anthropic_client():
@@ -447,7 +448,7 @@ def main() -> int:
         if args.mode == "repl":
             mode_repl(session)
         elif args.mode == "script":
-            mode_script(session, args.file, script_lines)
+            return mode_script(session, args.file, script_lines)
         elif args.mode == "ai":
             return mode_ai(session, args.task, step_limit=args.limit, client=ai_client)
     finally:
