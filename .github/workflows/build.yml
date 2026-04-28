@@ -983,6 +983,41 @@ jobs:
               raise SystemExit(f"ambiguous command block was not rejected: {out.getvalue()!r}")
           PY
 
+      - name: Check bridge AI ambiguous command blocks
+        run: |
+          python3 - <<'PY'
+          import contextlib
+          import io
+
+          from demo.bridge import mode_ai
+
+          class FakeSession:
+              banner = "# llmos test proto=1"
+
+              def send(self, cmd):
+                  raise SystemExit("send should not be called for multiple command blocks")
+
+          class AmbiguousBlocksTextBlock:
+              type = "text"
+              text = "```llmos\nhelp\n```\n```llmos\nmem.query\n```"
+
+          class AmbiguousBlocksResponse:
+              content = [AmbiguousBlocksTextBlock()]
+
+          class AmbiguousBlocksMessages:
+              def create(self, **kwargs):
+                  return AmbiguousBlocksResponse()
+
+          class AmbiguousBlocksClient:
+              messages = AmbiguousBlocksMessages()
+
+          out = io.StringIO()
+          with contextlib.redirect_stdout(out):
+              mode_ai(FakeSession(), "task", step_limit=1, client=AmbiguousBlocksClient())
+          if "# ai error: ambiguous command blocks" not in out.getvalue():
+              raise SystemExit(f"ambiguous command blocks were not rejected: {out.getvalue()!r}")
+          PY
+
       - name: Check bridge AI unterminated command block
         run: |
           python3 - <<'PY'

@@ -199,6 +199,8 @@ def extract_ai_command(text: str) -> str:
         raise ValueError("unterminated command block")
 
     if fenced_blocks:
+        if len(fenced_blocks) > 1:
+            raise ValueError("ambiguous command blocks")
         lines = [line.strip() for line in fenced_blocks[-1] if line.strip()]
         if len(lines) > 1:
             raise ValueError("ambiguous command block")
