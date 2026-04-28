@@ -362,7 +362,7 @@ def mode_ai(
             print(f"# ai error: {e}")
             return
         try:
-            cmd = "".join(
+            cmd = "\n".join(
                 b.text for b in resp.content if getattr(b, "type", None) == "text"
             ).strip()
         except Exception as e:
