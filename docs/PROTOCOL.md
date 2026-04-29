@@ -464,10 +464,14 @@ If the function is absent, the response is
 `err code=unavailable detail="no such function"`. If the selected BAR is
 empty, the response is `err code=unavailable detail="BAR not present"`.
 If the BAR is I/O-space rather than memory-space, the response is
-`err code=denied detail="only memory BAR reads are supported"`. Reserved,
-malformed, or high 64-bit memory BARs are rejected; a 64-bit memory BAR is
-readable only when its high dword is zero. Out-of-range slot, offset,
-length, or effective physical address values return `out_of_range`.
+`err code=denied detail="only memory BAR reads are supported"`. Reserved
+or malformed memory BAR encodings return
+`err code=unavailable detail="unsupported memory BAR"`. A 64-bit memory
+BAR is readable only when its high dword is zero; high 64-bit addresses
+or effective physical addresses beyond the low 32-bit physical space return
+`err code=out_of_range detail="MMIO address exceeds 32-bit space"`.
+Out-of-range slot, offset, or length values return
+`err code=out_of_range detail="bar, offset, or len out of range"`.
 
 ## BAR-bound typed memory reads
 
