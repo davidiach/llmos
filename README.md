@@ -223,6 +223,8 @@ below.
 
 ```
 export ANTHROPIC_API_KEY=sk-ant-...
+# optional: override the default model, currently claude-opus-4-7
+export ANTHROPIC_MODEL=claude-opus-4-7
 python3 demo/bridge.py ai "Figure out what kind of machine this is."
 ```
 
