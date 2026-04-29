@@ -68,13 +68,13 @@
 > describe pci.bar.read
 < ok name=pci.bar.read args="bdf=BB.DD.F bar=N offset=H(0-ff) len=N(1-16)" returns="bdf=BB.DD.F bar=N kind=io port=H offset=H len=N data=HEX" notes="reads I/O-space BARs only; memory BARs return denied"
 > describe pci.mem.read
-< ok name=pci.mem.read args="bdf=BB.DD.F bar=N offset=H(0-ff) len=N(1-16)" returns="bdf=BB.DD.F bar=N kind=m32|m64|mlt1 addr=H offset=H len=N data=HEX" notes="reads memory-space BARs only via flat FS; I/O BARs return denied; 64-bit BARs require high dword zero"
+< ok name=pci.mem.read args="bdf=BB.DD.F bar=N offset=H(0-ff) len=N(1-16)" returns="bdf=BB.DD.F bar=N kind=m32|m64|mlt1 addr=H offset=H len=N data=HEX" notes="reads memory BAR bytes via flat FS; I/O BARs denied; unsupported BARs unavailable; high 64-bit BARs out_of_range"
 > describe pci.mem.read8
-< ok name=pci.mem.read8 args="bdf=BB.DD.F bar=N offset=H(0-ff)" returns="bdf=BB.DD.F bar=N kind=m32|m64|mlt1 addr=H offset=H width=8 value=HH" notes="reads one little-endian byte from a memory BAR; I/O BARs return denied"
+< ok name=pci.mem.read8 args="bdf=BB.DD.F bar=N offset=H(0-ff)" returns="bdf=BB.DD.F bar=N kind=m32|m64|mlt1 addr=H offset=H width=8 value=HH" notes="reads one little-endian byte from a memory BAR; I/O BARs denied; unsupported BARs unavailable; high 64-bit BARs out_of_range"
 > describe pci.mem.read16
-< ok name=pci.mem.read16 args="bdf=BB.DD.F bar=N offset=H(0-ff,aligned)" returns="bdf=BB.DD.F bar=N kind=m32|m64|mlt1 addr=H offset=H width=16 value=HHHH" notes="reads one little-endian aligned word from a memory BAR; I/O BARs return denied"
+< ok name=pci.mem.read16 args="bdf=BB.DD.F bar=N offset=H(0-ff,aligned)" returns="bdf=BB.DD.F bar=N kind=m32|m64|mlt1 addr=H offset=H width=16 value=HHHH" notes="reads one little-endian aligned word from a memory BAR; I/O BARs denied; unsupported BARs unavailable; high 64-bit BARs out_of_range"
 > describe pci.mem.read32
-< ok name=pci.mem.read32 args="bdf=BB.DD.F bar=N offset=H(0-ff,aligned)" returns="bdf=BB.DD.F bar=N kind=m32|m64|mlt1 addr=H offset=H width=32 value=HHHHHHHH" notes="reads one little-endian aligned dword from a memory BAR; I/O BARs return denied"
+< ok name=pci.mem.read32 args="bdf=BB.DD.F bar=N offset=H(0-ff,aligned)" returns="bdf=BB.DD.F bar=N kind=m32|m64|mlt1 addr=H offset=H width=32 value=HHHHHHHH" notes="reads one little-endian aligned dword from a memory BAR; I/O BARs denied; unsupported BARs unavailable; high 64-bit BARs out_of_range"
 # Introspection says `pci.scan` exists; now use it once so the demo and CI
 # both cover the newly-advertised primitive.
 > pci.scan
