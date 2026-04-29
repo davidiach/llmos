@@ -172,8 +172,8 @@ MMIO addresses that real mode cannot directly dereference.
 `pci.mem.read` is the memory-space sibling. It uses a flat `FS` segment
 cache (set up through a tiny unreal-mode transition) to read small byte
 ranges from memory BARs whose physical base fits in 32 bits. I/O BARs
-return `err code=denied`, empty BARs return `unavailable`, and 64-bit
-BARs with a non-zero high dword are rejected as out of range.
+return `err code=denied`, empty or unsupported BARs return `unavailable`,
+and 64-bit BARs with a non-zero high dword are rejected as out of range.
 
 `pci.mem.read8`, `pci.mem.read16`, and `pci.mem.read32` are typed MMIO
 siblings for register probing. They keep the same `bdf`/`bar`/`offset`
@@ -456,8 +456,9 @@ docs/
   clock.
 - `pci.bar.read` and `pci.mem.read` both use small bounded reads.
   `pci.mem.read` reaches only memory BARs whose base fits in 32-bit
-  physical address space; it does not handle high 64-bit BARs, writes,
-  interrupts, DMA, or device-specific ordering rules.
+  physical address space; it does not handle high 64-bit BAR addresses,
+  unsupported memory BAR encodings, writes, interrupts, DMA, or
+  device-specific ordering rules.
 - No crypto, no storage, no networking, no interrupts of our own. Every
   non-trivial hardware interaction rides on the BIOS.
 - The kernel is tiny on purpose. "Add a feature" almost always means "add
