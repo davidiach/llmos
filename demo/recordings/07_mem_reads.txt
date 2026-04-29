@@ -12,7 +12,7 @@
 > pci.scan
 < ok devices=00.00.0:8086:1237:06,00.01.0:8086:7000:06,00.01.1:8086:7010:01,00.01.3:8086:7113:06,00.02.0:1234:1111:03,00.03.0:8086:100e:02
 > describe pci.mem.read
-< ok name=pci.mem.read args="bdf=BB.DD.F bar=N offset=H(0-ff) len=N(1-16)" returns="bdf=BB.DD.F bar=N kind=m32|m64|mlt1 addr=H offset=H len=N data=HEX" notes="reads memory-space BARs only via flat FS; I/O BARs return denied; 64-bit BARs require high dword zero"
+< ok name=pci.mem.read args="bdf=BB.DD.F bar=N offset=H(0-ff) len=N(1-16)" returns="bdf=BB.DD.F bar=N kind=m32|m64|mlt1 addr=H offset=H len=N data=HEX" notes="reads memory BAR bytes via flat FS; I/O BARs denied; unsupported BARs unavailable; high 64-bit BARs out_of_range"
 > pci.bars bdf=00.02.0
 < ok bdf=00.02.0 bars=0:m32:fd000000:p,1:none,2:m32:febb0000:n,3:none,4:none,5:none
 # std-vga BAR0 is the framebuffer window. Read the first four bytes.
