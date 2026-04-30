@@ -1,4 +1,4 @@
-# # llmos v0.1 proto=1 primitives=29
+# llmos v0.1 proto=1 primitives=29
 # =============================================================================
 # Beat 17: No-argument primitives reject extras
 #

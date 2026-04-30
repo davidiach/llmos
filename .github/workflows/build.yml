@@ -37,7 +37,7 @@ jobs:
               --image build/llmos.img \
               script "demo/transcripts/${name}.llmos" \
               | tee "${out}"
-            grep -q "^# # llmos v0.1 proto=1 primitives=" "${out}"
+            grep -q "^# llmos v0.1 proto=1 primitives=" "${out}"
             echo "::endgroup::"
           }
 
@@ -327,7 +327,7 @@ jobs:
             --qemu-arg=virtio-net-pci,addr=4 \
             script /tmp/pci_caps_probe.llmos \
             | tee /tmp/pci_caps_probe.txt
-          grep -q "^# # llmos v0.1 proto=1 primitives=" /tmp/pci_caps_probe.txt
+          grep -q "^# llmos v0.1 proto=1 primitives=" /tmp/pci_caps_probe.txt
           grep -q "^< ok devices=.*00\.04\.0:1af4:1000:02" /tmp/pci_caps_probe.txt
           grep -q "^< ok bdf=00\.04\.0 caps=[0-9a-f]\{2\}:[0-9a-f]\{2\}.* truncated=0 malformed=0" /tmp/pci_caps_probe.txt
           grep -q "^< ok bdf=00\.04\.0 offset=34 len=4 data=[0-9a-f]\{8\}" /tmp/pci_caps_probe.txt
@@ -370,7 +370,7 @@ jobs:
             --qemu-arg=e1000,bus=br0,addr=2 \
             script /tmp/pci_bridge_probe.llmos \
             | tee /tmp/pci_bridge_probe.txt
-          grep -q "^# # llmos v0.1 proto=1 primitives=" /tmp/pci_bridge_probe.txt
+          grep -q "^# llmos v0.1 proto=1 primitives=" /tmp/pci_bridge_probe.txt
           grep -q "^< ok name=pci.scan " /tmp/pci_bridge_probe.txt
           grep -q "^< ok devices=.*00\.04\.0:1b36:0001:06.*01\.02\.0:8086:100e:02" /tmp/pci_bridge_probe.txt
           # Bridge (type 1) MUST list slot 0 and MUST NOT emit a slot 2+
