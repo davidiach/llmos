@@ -13,12 +13,12 @@ pci.scan
 describe pci.bar.read
 pci.bars bdf=00.01.1
 
-# PIIX3 IDE exposes its bus-master register block through BAR4. Read the
-# first four bytes from that I/O window.
+# PIIX3 IDE exposes its bus-master register block through BAR4, but those
+# ports are outside the global read allowlist and are denied.
 pci.bar.read bdf=00.01.1 bar=4 offset=0 len=4
 
-# Offsets are BAR-relative. This reads two bytes farther into the same
-# bus-master IDE window, without granting arbitrary access to all ports.
+# Offsets are still BAR-relative, but BAR indirection does not grant new
+# raw port access.
 pci.bar.read bdf=00.01.1 bar=4 offset=2 len=2
 
 # A memory BAR is not an I/O BAR. The primitive names the boundary with

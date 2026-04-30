@@ -5,11 +5,16 @@ on:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          persist-credentials: false
 
       - name: Install toolchain
         run: sudo apt-get update && sudo apt-get install -y nasm qemu-system-x86
@@ -120,12 +125,12 @@ jobs:
             | grep -q '^< err code=bad_arg detail="usage: pci.bars bdf=BB\.DD\.F"'
 
           run_transcript 06_bar_reads
-          # Beat 6: BAR-bound reads - schema first, then a successful
-          # I/O-space BAR read. Memory BARs are denied, empty BARs are
-          # unavailable, and the small bounded read window rejects len=17.
+          # Beat 6: BAR-bound reads - schema first, then BAR-relative
+          # I/O-space reads denied by the same port allowlist as io.in.
+          # Memory BARs are denied, empty BARs are unavailable, and the
+          # small bounded read window rejects len=17.
           grep -q "^< ok name=pci.bar.read " /tmp/06_bar_reads.txt
-          grep -q "^< ok bdf=00\.01\.1 bar=4 kind=io port=[0-9a-f]\{4\} offset=0000 len=4 data=[0-9a-f]\{8\}" /tmp/06_bar_reads.txt
-          grep -q "^< ok bdf=00\.01\.1 bar=4 kind=io port=[0-9a-f]\{4\} offset=0002 len=2 data=[0-9a-f]\{4\}" /tmp/06_bar_reads.txt
+          test "$(grep -c '^< err code=denied detail="port not in allowlist"' /tmp/06_bar_reads.txt)" = "2"
           grep -q '^< err code=denied detail="only I/O BAR reads are supported"' /tmp/06_bar_reads.txt
           grep -q '^< err code=unavailable detail="BAR not present"' /tmp/06_bar_reads.txt
           grep -q '^< err code=out_of_range detail="bar, offset, or len out of range"' /tmp/06_bar_reads.txt
@@ -271,6 +276,25 @@ jobs:
           # Beat 16: request lines longer than the kernel input buffer must
           # fail as malformed instead of executing a truncated prefix.
           grep -q '^< err code=bad_arg detail="request line too long"' /tmp/16_line_length.txt
+          echo "::group::smoke: raw-control-byte"
+          python3 - <<'PY'
+          from pathlib import Path
+
+          from demo.bridge import LlmosSession
+
+          expected = 'err code=bad_arg detail="request contains non-printable character"'
+          for payload in (b"help\x00 unexpected=1\r\n", b"help unexpected=1\x08\r\n"):
+              session = LlmosSession(Path("build/llmos.img"))
+              try:
+                  session.proc.stdin.write(payload)
+                  session.proc.stdin.flush()
+                  response = session._readline()
+                  if response != expected:
+                      raise SystemExit(f"unexpected response for {payload!r}: {response!r}")
+              finally:
+                  session.close()
+          PY
+          echo "::endgroup::"
 
           run_transcript 17_no_arg_validation
           # Beat 17: args=none primitives must reject unexpected arguments.
@@ -1579,7 +1603,7 @@ jobs:
           PY
 
       - name: Upload image
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: llmos.img
           path: build/llmos.img

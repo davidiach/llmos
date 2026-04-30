@@ -164,10 +164,11 @@ after the function digit, yields `err code=bad_arg`.
 `pci.bar.read` is the first BAR-bound register read primitive. It takes the
 same `BB.DD.F` tuple, a BAR slot number, a small offset (`0x00`-`0xff`),
 and a byte count (`1`-`16`). In v0.1 it reads only I/O-space BARs using
-8-bit port reads and returns the bytes as `data=HEX`; memory BARs return
-`err code=denied`. That keeps the primitive useful for devices like the
-PIIX3 IDE bus-master window while avoiding arbitrary port reads and high
-MMIO addresses that real mode cannot directly dereference.
+8-bit port reads and returns the bytes as `data=HEX`; every effective port
+must also be present in the same global read allowlist used by `io.in`.
+Memory BARs and non-allowlisted I/O BAR ports return `err code=denied`,
+avoiding arbitrary port reads and high MMIO addresses that real mode cannot
+directly dereference.
 
 `pci.mem.read` is the memory-space sibling. It uses a flat `FS` segment
 cache (set up through a tiny unreal-mode transition) to read small byte
