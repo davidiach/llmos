@@ -114,6 +114,11 @@ main_loop:
     cmp     byte [input_overflow], 0
     jne     .line_too_long
 
+    ; Raw serial peers can send bytes the bridge would reject. Treat any
+    ; non-printable request byte as malformed before command parsing.
+    cmp     byte [input_invalid], 0
+    jne     .bad_char
+
     ; Empty line -> just continue.
     cmp     byte [input_buf], 0
     je      main_loop
@@ -141,6 +146,10 @@ main_loop:
     jmp     main_loop
 .line_too_long:
     mov     si, err_line_too_long
+    call    respond
+    jmp     main_loop
+.bad_char:
+    mov     si, err_bad_char
     call    respond
     jmp     main_loop
 
@@ -821,17 +830,8 @@ h_io_in:
     mov     di, key_port
     call    find_kv_hex
     jc      .usage
-    ; Check allowlist.
-    mov     bx, io_allowlist
-.chk:
-    mov     cx, [bx]
-    cmp     cx, 0xFFFF
-    je      .denied
-    cmp     ax, cx
-    je      .allowed
-    add     bx, 2
-    jmp     .chk
-.allowed:
+    call    io_port_allowed
+    jc      .denied
     mov     dx, ax
     push    ax
     in      al, dx
@@ -856,6 +856,31 @@ h_io_in:
 .usage:
     mov     si, err_io_usage
     call    respond
+    ret
+
+; io_port_allowed: AX = port. CF=0 if allowed, CF=1 if denied.
+; Preserves AX so callers can immediately use the checked port.
+io_port_allowed:
+    push    bx
+    push    cx
+    mov     bx, io_allowlist
+.chk:
+    mov     cx, [bx]
+    cmp     cx, 0xFFFF
+    je      .denied
+    cmp     ax, cx
+    je      .allowed
+    add     bx, 2
+    jmp     .chk
+.allowed:
+    pop     cx
+    pop     bx
+    clc
+    ret
+.denied:
+    pop     cx
+    pop     bx
+    stc
     ret
 
 ; ---- pci.scan -------------------------------------------------------------
@@ -1918,6 +1943,16 @@ h_pci_bar_read:
     jc      .port_range
     mov     [pci_bar_port], bx
 
+    ; BAR indirection must not expand the raw port policy: every effective
+    ; byte port in the BAR-relative read range must be in the io.in allowlist.
+    mov     cx, [pci_bar_len]
+    mov     ax, [pci_bar_port]
+.check_port:
+    call    io_port_allowed
+    jc      .port_denied
+    inc     ax
+    loop    .check_port
+
     ; "ok bdf=BB.DD.F bar=N kind=io port=HHHH offset=HHHH len=N data=..."
     mov     si, resp_ok_prefix
     call    serial_puts_only
@@ -1968,6 +2003,10 @@ h_pci_bar_read:
     ret
 .port_range:
     mov     si, err_pci_bar_port_range
+    call    respond
+    ret
+.port_denied:
+    mov     si, err_io_denied
     call    respond
     ret
 .range:
@@ -2874,6 +2913,7 @@ serial_read_line:
     push    ax
     push    bp
     mov     byte [input_overflow], 0
+    mov     byte [input_invalid], 0
     mov     bp, di
 .next:
     call    serial_getc
@@ -2881,8 +2921,10 @@ serial_read_line:
     je      .next                   ; ignore CR
     cmp     al, 10
     je      .done
-    cmp     al, 8                   ; BS (harmless — model shouldn't send)
-    je      .back
+    cmp     al, 0x20
+    jb      .invalid
+    cmp     al, 0x7F
+    jae     .invalid
     mov     bx, di
     sub     bx, bp
     cmp     bx, INPUT_MAX-1
@@ -2892,10 +2934,8 @@ serial_read_line:
 .overflow:
     mov     byte [input_overflow], 1
     jmp     .next
-.back:
-    cmp     di, bp
-    je      .next
-    dec     di
+.invalid:
+    mov     byte [input_invalid], 1
     jmp     .next
 .done:
     xor     al, al
@@ -3280,6 +3320,8 @@ err_unknown_cmd:
     db 'err code=unknown_cmd detail="try `help`"', 0
 err_line_too_long:
     db 'err code=bad_arg detail="request line too long"', 0
+err_bad_char:
+    db 'err code=bad_arg detail="request contains non-printable character"', 0
 err_no_args:
     db 'err code=bad_arg detail="unexpected arguments"', 0
 err_describe_usage:
@@ -3428,7 +3470,7 @@ sch_pci_config_read32: db 'ok name=pci.config.read32 args="bdf=BB.DD.F offset=H(
 sch_pci_cap_list: db 'ok name=pci.cap.list args="bdf=BB.DD.F" returns="bdf=BB.DD.F caps=OFF:ID[,..] truncated=N malformed=N" notes="walks conventional PCI capability list; empty list returns caps=; malformed chains are bounded and flagged"', 0
 sch_pci_cap_read: db 'ok name=pci.cap.read args="bdf=BB.DD.F cap=H(offset from pci.cap.list) offset=H(0-ff) len=N(1-16)" returns="bdf=BB.DD.F cap=H id=H offset=H len=N data=HEX" notes="cap must be present in the capability list; offset is relative to cap"', 0
 sch_pci_bars:   db 'ok name=pci.bars args="bdf=BB.DD.F" returns="bdf=BB.DD.F bars=I:KIND[:BASE[:p|n]],..." kinds="none|io:BASE32|m32:BASE32:p|n|m64:BASE64:p|n|m64trunc:BASE32:p|n|mlt1:BASE32:p|n|rsv:BASE32:p|n" slots="6 for header-type 0, 2 for header-type 1, else 0" notes="m64 consumes I+1; m64trunc flags a self-contradictory 64-bit BAR on the last slot; bdf format matches pci.scan"', 0
-sch_pci_bar_read: db 'ok name=pci.bar.read args="bdf=BB.DD.F bar=N offset=H(0-ff) len=N(1-16)" returns="bdf=BB.DD.F bar=N kind=io port=H offset=H len=N data=HEX" notes="reads I/O-space BARs only; memory BARs return denied"', 0
+sch_pci_bar_read: db 'ok name=pci.bar.read args="bdf=BB.DD.F bar=N offset=H(0-ff) len=N(1-16)" returns="bdf=BB.DD.F bar=N kind=io port=H offset=H len=N data=HEX" notes="reads I/O-space BARs only through io.in allowlist; memory BARs return denied"', 0
 sch_pci_mem_read: db 'ok name=pci.mem.read args="bdf=BB.DD.F bar=N offset=H(0-ff) len=N(1-16)" returns="bdf=BB.DD.F bar=N kind=m32|m64|mlt1 addr=H offset=H len=N data=HEX" notes="reads memory BAR bytes via flat FS; I/O BARs denied; unsupported BARs unavailable; high 64-bit BARs out_of_range"', 0
 sch_pci_mem_read8: db 'ok name=pci.mem.read8 args="bdf=BB.DD.F bar=N offset=H(0-ff)" returns="bdf=BB.DD.F bar=N kind=m32|m64|mlt1 addr=H offset=H width=8 value=HH" notes="reads one little-endian byte from a memory BAR; I/O BARs denied; unsupported BARs unavailable; high 64-bit BARs out_of_range"', 0
 sch_pci_mem_read16: db 'ok name=pci.mem.read16 args="bdf=BB.DD.F bar=N offset=H(0-ff,aligned)" returns="bdf=BB.DD.F bar=N kind=m32|m64|mlt1 addr=H offset=H width=16 value=HHHH" notes="reads one little-endian aligned word from a memory BAR; I/O BARs denied; unsupported BARs unavailable; high 64-bit BARs out_of_range"', 0
@@ -3519,6 +3561,7 @@ feat_htt:     db 'htt', 0
 ; =============================================================================
 input_buf:      times INPUT_MAX db 0
 input_overflow: db 0
+input_invalid:  db 0
 arg_ptr:        dw 0
 cpu_vbuf:       times 13 db 0
 cpu_sig:        dd 0

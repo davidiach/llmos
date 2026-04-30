@@ -37,6 +37,11 @@ Request lines are capped at 255 bytes, excluding the trailing CR/LF. Longer
 requests return `err code=bad_arg detail="request line too long"` without
 executing a truncated prefix.
 
+Request bytes must be printable ASCII (`0x20`-`0x7e`). CR and LF are accepted
+only as line terminators; CR is stripped. Other non-printable bytes return
+`err code=bad_arg detail="request contains non-printable character"` without
+dispatching the command.
+
 Primitives whose schema says `args=none` reject any argument string with
 `err code=bad_arg detail="unexpected arguments"`.
 
@@ -425,6 +430,10 @@ ok bdf=BB.DD.F bar=N kind=io port=HHHH offset=HHHH len=N data=HEX
 `port` is the effective 16-bit I/O port after adding `offset` to the BAR
 base. `data` is `len` bytes read with 8-bit `in` instructions and
 hex-encoded in order.
+
+Every effective byte port in the requested BAR range must also appear in the
+same compiled allowlist used by `io.in`. If any port falls outside that list,
+the response is `err code=denied detail="port not in allowlist"`.
 
 If the function is absent, the response is
 `err code=unavailable detail="no such function"`. If the selected BAR is

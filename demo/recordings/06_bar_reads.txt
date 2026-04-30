@@ -12,17 +12,17 @@
 > pci.scan
 < ok devices=00.00.0:8086:1237:06,00.01.0:8086:7000:06,00.01.1:8086:7010:01,00.01.3:8086:7113:06,00.02.0:1234:1111:03,00.03.0:8086:100e:02
 > describe pci.bar.read
-< ok name=pci.bar.read args="bdf=BB.DD.F bar=N offset=H(0-ff) len=N(1-16)" returns="bdf=BB.DD.F bar=N kind=io port=H offset=H len=N data=HEX" notes="reads I/O-space BARs only; memory BARs return denied"
+< ok name=pci.bar.read args="bdf=BB.DD.F bar=N offset=H(0-ff) len=N(1-16)" returns="bdf=BB.DD.F bar=N kind=io port=H offset=H len=N data=HEX" notes="reads I/O-space BARs only through io.in allowlist; memory BARs return denied"
 > pci.bars bdf=00.01.1
 < ok bdf=00.01.1 bars=0:none,1:none,2:none,3:none,4:io:0000c040,5:none
-# PIIX3 IDE exposes its bus-master register block through BAR4. Read the
-# first four bytes from that I/O window.
+# PIIX3 IDE exposes its bus-master register block through BAR4, but those
+# ports are outside the global read allowlist and are denied.
 > pci.bar.read bdf=00.01.1 bar=4 offset=0 len=4
-< ok bdf=00.01.1 bar=4 kind=io port=c040 offset=0000 len=4 data=00ff00ff
-# Offsets are BAR-relative. This reads two bytes farther into the same
-# bus-master IDE window, without granting arbitrary access to all ports.
+< err code=denied detail="port not in allowlist"
+# Offsets are still BAR-relative, but BAR indirection does not grant new
+# raw port access.
 > pci.bar.read bdf=00.01.1 bar=4 offset=2 len=2
-< ok bdf=00.01.1 bar=4 kind=io port=c042 offset=0002 len=2 data=00ff
+< err code=denied detail="port not in allowlist"
 # A memory BAR is not an I/O BAR. The primitive names the boundary with
 # denied instead of pretending real mode can dereference high MMIO.
 > pci.bar.read bdf=00.02.0 bar=0 offset=0 len=4
