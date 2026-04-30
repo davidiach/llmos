@@ -251,7 +251,7 @@ def mode_script(
     """Send every non-comment, non-empty line from the given file."""
     if lines is None:
         lines = path.read_text(encoding="utf-8").splitlines()
-    print(f"# {session.banner}")
+    print(session.banner)
     for raw in lines:
         if not raw or raw.startswith("#"):
             if raw.startswith("#"):
