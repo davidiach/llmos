@@ -33,9 +33,10 @@ tokens (no whitespace), hexadecimal (1–4 digits, case-insensitive), or
 unsigned decimal integers that fit in 16 bits. Leading zeroes on decimal
 values are accepted as long as the resulting value fits.
 
-Request lines are capped at 255 bytes, excluding the trailing CR/LF. Longer
-requests return `err code=bad_arg detail="request line too long"` without
-executing a truncated prefix.
+Request payloads are capped at 255 printable bytes after CR stripping,
+excluding the LF terminator. Longer requests return
+`err code=bad_arg detail="request line too long"` without executing a
+truncated prefix.
 
 Request bytes must be printable ASCII (`0x20`-`0x7e`) after CR stripping.
 LF terminates the line; CR bytes are ignored before LF. Other non-printable
