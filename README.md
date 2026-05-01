@@ -282,17 +282,19 @@ distinguishes it from the MMIO-register BAR on the same card (non-
 prefetchable — side effects), and finds the bus-master IDE I/O window on
 the PIIX3 controller whose legacy command ports beat 3 couldn't touch.
 Two views of the same hardware, now fully named. The I/O BARs it reads
-here are the addresses `pci.bar.read` can use to touch device registers.
+here are the addresses `pci.bar.read` can probe when the effective ports
+also pass the `io.in` allowlist.
 
 Transcript: `demo/transcripts/05_bar_windows.llmos`.
 
-**Beat 6 - BAR reads.** Task: *read a register window through a BAR*.
+**Beat 6 - BAR reads.** Task: *probe a register window through a BAR*.
 Claude asks for `pci.bar.read`, confirms that BAR reads are BDF- and
-slot-relative, and reads a few bytes from the PIIX3 IDE bus-master I/O
-window discovered in beat 5. It also tries a memory BAR and an empty BAR,
-getting `denied` and `unavailable` instead of ambiguous failure. The OS
-has crossed from naming hardware to reading a device-owned register
-window, still through a constrained primitive.
+slot-relative, and tries the PIIX3 IDE bus-master I/O window discovered
+in beat 5. The BAR is valid, but its ports are outside the global
+allowlist, so the read is denied. It also tries a memory BAR and an empty
+BAR, getting `denied` and `unavailable` instead of ambiguous failure. The
+OS has crossed from naming hardware to proving device register access
+stays behind a constrained primitive.
 
 Transcript: `demo/transcripts/06_bar_reads.llmos`.
 
