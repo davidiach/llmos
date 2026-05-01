@@ -295,6 +295,23 @@ jobs:
                   session.close()
           PY
           echo "::endgroup::"
+          echo "::group::smoke: raw-cr-stripping"
+          python3 - <<'PY'
+          from pathlib import Path
+
+          from demo.bridge import LlmosSession
+
+          session = LlmosSession(Path("build/llmos.img"))
+          try:
+              session.proc.stdin.write(b"he\rlp\r\n")
+              session.proc.stdin.flush()
+              response = session._readline()
+              if not response.startswith("ok primitives=help,describe"):
+                  raise SystemExit(f"CR stripping did not produce help response: {response!r}")
+          finally:
+              session.close()
+          PY
+          echo "::endgroup::"
 
           run_transcript 17_no_arg_validation
           # Beat 17: args=none primitives must reject unexpected arguments.

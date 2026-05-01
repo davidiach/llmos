@@ -2907,8 +2907,8 @@ serial_puts_only:
     ret
 
 ; serial_read_line: read one \n-terminated line into [DI], NUL-terminate.
-;   Strips \r. Caps at INPUT_MAX-1. Echoes each char to VGA (not back to
-;   serial) so the audience can see what the model typed.
+;   Strips \r, stores printable bytes, and flags overflow/invalid input.
+;   The caller mirrors the buffered request to VGA before dispatch.
 serial_read_line:
     push    ax
     push    bp
