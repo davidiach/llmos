@@ -1,14 +1,14 @@
 # =============================================================================
-# Beat 6: BAR reads - from address windows to register bytes
+# Beat 6: BAR reads - from address windows to policy checks
 #
-# Task handed to the model: "Read a device register window through a BAR."
+# Task handed to the model: "Probe a device register window through a BAR."
 #
 # Beat 5 found the BAR windows. This beat uses one of them. The primitive is
 # deliberately narrower than arbitrary port I/O: the model must name the PCI
 # function, choose a BAR slot, and give a small offset and length.
 # =============================================================================
 
-# Baseline: rediscover the bus and the BAR that we are about to touch.
+# Baseline: rediscover the bus and the BAR that we are about to probe.
 pci.scan
 describe pci.bar.read
 pci.bars bdf=00.01.1

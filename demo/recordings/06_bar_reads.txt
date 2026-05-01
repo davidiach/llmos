@@ -1,14 +1,14 @@
 # llmos v0.1 proto=1 primitives=29
 # =============================================================================
-# Beat 6: BAR reads - from address windows to register bytes
+# Beat 6: BAR reads - from address windows to policy checks
 #
-# Task handed to the model: "Read a device register window through a BAR."
+# Task handed to the model: "Probe a device register window through a BAR."
 #
 # Beat 5 found the BAR windows. This beat uses one of them. The primitive is
 # deliberately narrower than arbitrary port I/O: the model must name the PCI
 # function, choose a BAR slot, and give a small offset and length.
 # =============================================================================
-# Baseline: rediscover the bus and the BAR that we are about to touch.
+# Baseline: rediscover the bus and the BAR that we are about to probe.
 > pci.scan
 < ok devices=00.00.0:8086:1237:06,00.01.0:8086:7000:06,00.01.1:8086:7010:01,00.01.3:8086:7113:06,00.02.0:1234:1111:03,00.03.0:8086:100e:02
 > describe pci.bar.read
