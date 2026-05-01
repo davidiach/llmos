@@ -37,8 +37,9 @@ Request lines are capped at 255 bytes, excluding the trailing CR/LF. Longer
 requests return `err code=bad_arg detail="request line too long"` without
 executing a truncated prefix.
 
-Request bytes must be printable ASCII (`0x20`-`0x7e`). CR and LF are accepted
-only as line terminators; CR is stripped. Other non-printable bytes return
+Request bytes must be printable ASCII (`0x20`-`0x7e`) after CR stripping.
+LF terminates the line; CR bytes are ignored before LF. Other non-printable
+bytes return
 `err code=bad_arg detail="request contains non-printable character"` without
 dispatching the command.
 
