@@ -203,6 +203,14 @@ make debug         # paused at start, gdb stub on :1234
 
 ### Drive it yourself (REPL)
 
+Shortcut that builds first:
+
+```
+./run.sh
+```
+
+Or run the bridge directly after `make`:
+
 ```
 python3 demo/bridge.py repl
 > help
