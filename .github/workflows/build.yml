@@ -22,7 +22,9 @@ jobs:
           persist-credentials: false
 
       - name: Install toolchain
-        run: sudo apt-get update && sudo apt-get install -y nasm qemu-system-x86
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends nasm qemu-system-x86
 
       - name: Build
         run: make
