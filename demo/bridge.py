@@ -51,14 +51,17 @@ class LlmosSession:
         ]
         if qemu_args:
             launch.extend(qemu_args)
+        self._stderr_limit = 4096
+        self._stderr_buf = bytearray()
+        self._stderr_lock = threading.Lock()
         self.proc = subprocess.Popen(
             launch,
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
             bufsize=0,
         )
-        if self.proc.stdin is None or self.proc.stdout is None:
+        if self.proc.stdin is None or self.proc.stdout is None or self.proc.stderr is None:
             raise RuntimeError("failed to open llmos stdio pipes")
         self._stdout_queue: queue.Queue[bytes | None] = queue.Queue()
         self._stdout_thread = threading.Thread(
@@ -66,12 +69,24 @@ class LlmosSession:
             name="llmos-stdout",
             daemon=True,
         )
+        self._stderr_thread = threading.Thread(
+            target=self._pump_stderr,
+            name="llmos-stderr",
+            daemon=True,
+        )
         self._stdout_thread.start()
+        self._stderr_thread.start()
         self._sync_lost = False
         try:
             self.banner = self._await_banner(boot_timeout)
-        except BaseException:
+        except BaseException as exc:
+            qemu_exited = self.proc.poll() is not None
+            stderr = self._stderr_text()
             self.close()
+            if qemu_exited and not stderr:
+                stderr = self._stderr_text()
+            if qemu_exited and stderr:
+                raise RuntimeError(f"{exc}; qemu stderr: {stderr}") from exc
             raise
         self.log: list[tuple[str, str]] = []   # (request, response) history
 
@@ -90,6 +105,26 @@ class LlmosSession:
             pass
         finally:
             self._stdout_queue.put(None)
+
+    def _pump_stderr(self) -> None:
+        """Capture bounded QEMU stderr so startup failures stay diagnosable."""
+        assert self.proc.stderr is not None
+        try:
+            while True:
+                chunk = self.proc.stderr.read(1024)
+                if not chunk:
+                    break
+                with self._stderr_lock:
+                    self._stderr_buf.extend(chunk)
+                    if len(self._stderr_buf) > self._stderr_limit:
+                        del self._stderr_buf[: len(self._stderr_buf) - self._stderr_limit]
+        except OSError:
+            pass
+
+    def _stderr_text(self) -> str:
+        with self._stderr_lock:
+            data = bytes(self._stderr_buf)
+        return data.decode("utf-8", errors="replace").strip()
 
     def _readline(self, timeout: float = 2.0) -> str:
         """Read one \\r\\n-terminated line from the kernel, with a deadline."""
@@ -150,23 +185,26 @@ class LlmosSession:
         return resp
 
     def close(self) -> None:
-        if self.proc.poll() is not None:
-            return
-        try:
-            self.proc.terminate()
-            self.proc.wait(timeout=1.0)
-        except subprocess.TimeoutExpired:
+        if self.proc.poll() is None:
             try:
-                self.proc.kill()
+                self.proc.terminate()
                 self.proc.wait(timeout=1.0)
+            except subprocess.TimeoutExpired:
+                try:
+                    self.proc.kill()
+                    self.proc.wait(timeout=1.0)
+                except Exception:
+                    pass
             except Exception:
-                pass
-        except Exception:
-            try:
-                self.proc.kill()
-                self.proc.wait(timeout=1.0)
-            except Exception:
-                pass
+                try:
+                    self.proc.kill()
+                    self.proc.wait(timeout=1.0)
+                except Exception:
+                    pass
+        for thread_name in ("_stdout_thread", "_stderr_thread"):
+            thread = getattr(self, thread_name, None)
+            if thread is not None and thread.is_alive():
+                thread.join(timeout=0.2)
 
 
 # ---------------------------------------------------------------------------
