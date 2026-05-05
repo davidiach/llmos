@@ -20,9 +20,11 @@ MAX_KERNEL_BYTES := $(shell expr $(KERNEL_SECTORS) \* 512)
 # QEMU window if you remove -display none).
 QEMU_ARGS  := -drive format=raw,if=floppy,file=$(IMG) -serial stdio -display none
 
-.PHONY: all run run-gui debug clean
+.PHONY: all run run-gui debug clean check smoke test-bridge
 
 all: $(IMG)
+
+check: all test-bridge smoke
 
 $(BUILD_DIR):
 	@mkdir -p $(BUILD_DIR)
@@ -63,6 +65,19 @@ run-gui: $(IMG)
 
 debug: $(IMG)
 	$(QEMU) $(QEMU_ARGS) -s -S
+
+test-bridge:
+	python3 -m unittest demo.test_bridge
+
+smoke: $(IMG)
+	@set -e; \
+	for t in demo/transcripts/*.llmos; do \
+	  name=$${t##*/}; name=$${name%.llmos}; \
+	  printf "smoke %s\n" "$$name"; \
+	  timeout 30 python3 demo/bridge.py --image $(IMG) script "$$t" > "/tmp/llmos-smoke-$$name.out"; \
+	  grep -q '^# llmos v0\.1 proto=1 primitives=29' "/tmp/llmos-smoke-$$name.out"; \
+	done; \
+	echo "smoke transcripts passed"
 
 clean:
 	rm -rf $(BUILD_DIR)

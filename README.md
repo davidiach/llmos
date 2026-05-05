@@ -188,7 +188,7 @@ The 16- and 32-bit forms require natural alignment.
 
 - `nasm`
 - `qemu-system-i386`
-- `make`, `dd`
+- `make`, `dd`, `timeout`
 - `python3` (for the bridge)
 - `pip install anthropic` (only if you want Claude to drive)
 
@@ -196,6 +196,9 @@ The 16- and 32-bit forms require natural alignment.
 
 ```
 make               # build/llmos.img
+make test-bridge   # run bridge unit tests
+make smoke         # replay shipped transcripts through QEMU
+make check         # build + bridge tests + transcript smoke
 make run           # run in QEMU, COM1 on stdio, VGA suppressed
 make run-gui       # run in QEMU with the VGA window visible
 make debug         # paused at start, gdb stub on :1234
