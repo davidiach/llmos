@@ -625,6 +625,44 @@ jobs:
           check([b"o", b"k"])
           PY
 
+      - name: Check bridge stderr pump buffering
+        run: |
+          python3 - <<'PY'
+          import threading
+
+          from demo.bridge import LlmosSession
+
+          class FakeStderr:
+              def __init__(self, chunks, final):
+                  self.chunks = list(chunks)
+                  self.final = final
+
+              def read(self, size):
+                  if self.chunks:
+                      return self.chunks.pop(0)
+                  if self.final == "eof":
+                      return b""
+                  raise OSError("stderr pipe failed")
+
+          class FakeProc:
+              def __init__(self, chunks, final):
+                  self.stderr = FakeStderr(chunks, final)
+
+          def check(chunks, final, limit, expected):
+              session = object.__new__(LlmosSession)
+              session.proc = FakeProc(chunks, final)
+              session._stderr_limit = limit
+              session._stderr_buf = bytearray()
+              session._stderr_lock = threading.Lock()
+              session._pump_stderr()
+              got = session._stderr_text()
+              if got != expected:
+                  raise SystemExit(f"stderr buffer was {got!r}, expected {expected!r}")
+
+          check([b"qemu ", b"warning"], "eof", 64, "qemu warning")
+          check([b"12345", b"67890"], "error", 8, "34567890")
+          PY
+
       - name: Check bridge single-line sends
         run: |
           python3 - <<'PY'
