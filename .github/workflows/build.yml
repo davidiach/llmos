@@ -1595,6 +1595,7 @@ jobs:
           import contextlib
           import io
           import sys
+          from pathlib import Path
 
           import demo.bridge as bridge
 
@@ -1617,6 +1618,17 @@ jobs:
           finally:
               sys.argv = old_argv
               bridge.LlmosSession = old_session
+
+          fake_qemu = Path("/tmp/llmos-fake-qemu-stderr")
+          fake_qemu.write_text("#!/bin/sh\necho qemu exploded >&2\nexit 1\n", encoding="utf-8")
+          fake_qemu.chmod(0o755)
+          try:
+              bridge.LlmosSession(Path("build/llmos.img"), qemu=str(fake_qemu), boot_timeout=1.0)
+          except RuntimeError as exc:
+              if "qemu stderr: qemu exploded" not in str(exc):
+                  raise SystemExit(f"qemu stderr was not surfaced: {exc!r}")
+          else:
+              raise SystemExit("expected fake QEMU startup to fail")
           PY
 
       - name: Upload image
