@@ -29,6 +29,9 @@ jobs:
       - name: Build
         run: make
 
+      - name: Run bridge unit tests
+        run: make test-bridge
+
       - name: Report sizes
         run: |
           echo "boot.bin:   $(wc -c < build/boot.bin) bytes"
