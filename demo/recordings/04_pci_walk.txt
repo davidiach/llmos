@@ -6,7 +6,7 @@
 #
 # The model doesn't know the primitive list yet. It asks `help`, notices
 # `pci.scan`, asks for the schema (to learn how to read the records), then
-# scans the bus. The response is a CSV of fixed-width B.D.F:VVVV:DDDD:CC
+# scans the bus. The response is a CSV of fixed-width BB.DD.F:VVVV:DDDD:CC
 # records — everything the model needs to name the devices from first
 # principles using only the vendor id and the PCI base-class byte.
 # =============================================================================
@@ -16,14 +16,14 @@
 # `pci.scan` is right there in the primitive list. Learn the record shape
 # before calling it — the schema explains what each colon-separated field is.
 > describe pci.scan
-< ok name=pci.scan args=none returns="devices=B.D.F:VVVV:DDDD:CC[,...]" scope="bus 0 + any PCI-to-PCI bridges reachable from it; class = base class byte"
+< ok name=pci.scan args=none returns="devices=BB.DD.F:VVVV:DDDD:CC[,...]" scope="bus 0 + any PCI-to-PCI bridges reachable from it; class = base class byte"
 # Now walk the tree. Starts at bus 0; PCI-to-PCI bridges are followed
 # into their secondary bus. QEMU's default -M pc has no such bridges, so
 # on this machine everything lands on bus 00 — but the same response
 # format will carry bus 01+ once a bridge is attached.
 > pci.scan
 < ok devices=00.00.0:8086:1237:06,00.01.0:8086:7000:06,00.01.1:8086:7010:01,00.01.3:8086:7113:06,00.02.0:1234:1111:03,00.03.0:8086:100e:02
-# The record format is B.D.F:VVVV:DDDD:CC — bus.device.function, vendor id,
+# The record format is BB.DD.F:VVVV:DDDD:CC — bus.device.function, vendor id,
 # device id, base class byte. Vendor 8086 is Intel; vendor 1234 is QEMU's
 # synthetic "std-vga" vendor. The class byte is the interesting part — it
 # names the *kind* of device independent of who made it:

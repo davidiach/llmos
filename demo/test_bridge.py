@@ -30,6 +30,7 @@ KERNEL_ASM = Path(__file__).resolve().parents[1] / "src" / "kernel.asm"
 README_MD = Path(__file__).resolve().parents[1] / "README.md"
 PROTOCOL_MD = Path(__file__).resolve().parents[1] / "docs" / "PROTOCOL.md"
 RECORDINGS_DIR = Path(__file__).resolve().parent / "recordings"
+TRANSCRIPTS_DIR = Path(__file__).resolve().parent / "transcripts"
 
 
 class KernelProtocolMetadata(NamedTuple):
@@ -679,6 +680,23 @@ class KernelMetadataTests(unittest.TestCase):
             ):
                 self.assertIn(primitive, metadata.schema_by_command)
                 self.assertEqual(actual, metadata.schema_by_command[primitive])
+
+    def test_protocol_files_use_fixed_width_bdf_notation(self) -> None:
+        legacy_bdf = ".".join(["B", "D", "F"])
+        protocol_files = [
+            README_MD,
+            PROTOCOL_MD,
+            KERNEL_ASM,
+            *sorted(RECORDINGS_DIR.glob("*.txt")),
+            *sorted(TRANSCRIPTS_DIR.glob("*.llmos")),
+        ]
+
+        offenders = [
+            str(path.relative_to(KERNEL_ASM.parents[1]))
+            for path in protocol_files
+            if legacy_bdf in path.read_text(encoding="utf-8")
+        ]
+        self.assertEqual(offenders, [])
 
     def test_mmio_fs_reads_restore_fs_before_helper_calls(self) -> None:
         text = KERNEL_ASM.read_text(encoding="utf-8")
