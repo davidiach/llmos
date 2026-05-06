@@ -69,12 +69,16 @@ ARG_CAP     equ 0x80
 ; Entry
 ; =============================================================================
 start:
+    ; The bootloader normally jumps here with interrupts enabled. Install the
+    ; kernel's own segment registers and stack before accepting hardware IRQs.
+    cli
     xor     ax, ax
     mov     ds, ax
     mov     es, ax
     mov     ss, ax
     mov     sp, 0xFFF0
     cld
+    sti
 
     ; VGA text mode 80x25.
     mov     ax, 0x0003
