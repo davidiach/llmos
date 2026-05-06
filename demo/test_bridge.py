@@ -16,6 +16,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from typing import NamedTuple
 from unittest.mock import patch
 
 if __package__ in (None, ""):
@@ -25,6 +26,144 @@ import demo.bridge as bridge
 
 
 KERNEL_ASM = Path(__file__).resolve().parents[1] / "src" / "kernel.asm"
+README_MD = Path(__file__).resolve().parents[1] / "README.md"
+PROTOCOL_MD = Path(__file__).resolve().parents[1] / "docs" / "PROTOCOL.md"
+
+
+class KernelProtocolMetadata(NamedTuple):
+    commands: list[str]
+    cmd_labels: list[str]
+    schema_labels: list[str]
+    ready_banner: str
+    proto: int
+    primitive_count: int
+    help_primitives: list[str]
+    io_allowlist: list[int]
+    io_schema_allowlist: list[int]
+
+
+def extract_kernel_protocol_metadata() -> KernelProtocolMetadata:
+    text = KERNEL_ASM.read_text(encoding="utf-8")
+
+    cmd_table = re.search(
+        r"^cmd_table:\n(?P<body>.*?)^\s*dw\s+0\b",
+        text,
+        re.MULTILINE | re.DOTALL,
+    )
+    if cmd_table is None:
+        raise AssertionError("missing cmd_table")
+    cmd_labels = re.findall(
+        r"^\s*dw\s+(cmd_[A-Za-z0-9_]+),\s+h_[A-Za-z0-9_]+",
+        cmd_table.group("body"),
+        re.MULTILINE,
+    )
+
+    command_defs = dict(
+        re.findall(
+            r"^(cmd_[A-Za-z0-9_]+):\s+db\s+'([^']+)',\s*0",
+            text,
+            re.MULTILINE,
+        )
+    )
+    missing_commands = [label for label in cmd_labels if label not in command_defs]
+    if missing_commands:
+        raise AssertionError(f"missing command definitions: {missing_commands}")
+    commands = [command_defs[label] for label in cmd_labels]
+
+    schema_table = re.search(
+        r"^schema_table:\n(?P<body>.*?)^\s*dw\s+0\b",
+        text,
+        re.MULTILINE | re.DOTALL,
+    )
+    if schema_table is None:
+        raise AssertionError("missing schema_table")
+    schema_labels = re.findall(
+        r"^\s*dw\s+(cmd_[A-Za-z0-9_]+),\s+sch_[A-Za-z0-9_]+",
+        schema_table.group("body"),
+        re.MULTILINE,
+    )
+
+    ready_msg = re.search(
+        r"^ready_msg:\s+db '([^']+)',\s*13,\s*10,\s*0",
+        text,
+        re.MULTILINE,
+    )
+    if ready_msg is None:
+        raise AssertionError("missing ready_msg")
+    ready_banner = ready_msg.group(1)
+
+    banner_metadata = re.search(
+        r"\bproto=([0-9]+)\s+primitives=([0-9]+)$",
+        ready_banner,
+    )
+    if banner_metadata is None:
+        raise AssertionError(f"malformed ready_msg: {ready_banner}")
+
+    help_response = re.search(
+        r"^help_response:\n\s+db 'ok primitives=([^']+)', 0",
+        text,
+        re.MULTILINE,
+    )
+    if help_response is None:
+        raise AssertionError("missing help_response")
+    help_primitives = help_response.group(1).split(",")
+
+    io_allowlist = re.search(
+        r"^io_allowlist:\n(?P<body>.*?)^\s*dw\s+0xFFFF\b",
+        text,
+        re.MULTILINE | re.DOTALL,
+    )
+    if io_allowlist is None:
+        raise AssertionError("missing io_allowlist")
+    compiled_ports: list[int] = []
+    for line in io_allowlist.group("body").splitlines():
+        code = line.split(";", 1)[0]
+        compiled_ports.extend(
+            int(value, 16) for value in re.findall(r"0x[0-9A-Fa-f]+", code)
+        )
+
+    io_schema = re.search(
+        r"^sch_io_in:\s+db '[^']*allowlist=([^']+)',\s*0",
+        text,
+        re.MULTILINE,
+    )
+    if io_schema is None:
+        raise AssertionError("missing sch_io_in allowlist")
+    schema_ports = [int(value, 16) for value in io_schema.group(1).split(",")]
+
+    return KernelProtocolMetadata(
+        commands=commands,
+        cmd_labels=cmd_labels,
+        schema_labels=schema_labels,
+        ready_banner=ready_banner,
+        proto=int(banner_metadata.group(1)),
+        primitive_count=int(banner_metadata.group(2)),
+        help_primitives=help_primitives,
+        io_allowlist=compiled_ports,
+        io_schema_allowlist=schema_ports,
+    )
+
+
+def extract_readme_primitive_commands() -> list[str]:
+    text = README_MD.read_text(encoding="utf-8")
+    table = re.search(
+        r"^## Primitives \(v0\.1\)\n\n(?P<table>(?:\|.*\n)+)",
+        text,
+        re.MULTILINE,
+    )
+    if table is None:
+        raise AssertionError("missing README primitive table")
+
+    commands: list[str] = []
+    for line in table.group("table").splitlines()[2:]:
+        cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
+        if len(cells) < 3:
+            raise AssertionError(f"malformed README primitive row: {line}")
+        command = re.fullmatch(r"`([^`]+)`", cells[0])
+        if command is None:
+            raise AssertionError(f"malformed README command cell: {cells[0]}")
+        commands.append(command.group(1))
+    return commands
 
 
 class BridgeHelperTests(unittest.TestCase):
@@ -320,59 +459,38 @@ class BridgeSessionTests(unittest.TestCase):
 
 class KernelMetadataTests(unittest.TestCase):
     def test_command_tables_match_protocol_metadata(self) -> None:
-        text = KERNEL_ASM.read_text(encoding="utf-8")
+        metadata = extract_kernel_protocol_metadata()
+        self.assertEqual(metadata.schema_labels, metadata.cmd_labels)
+        self.assertEqual(metadata.primitive_count, len(metadata.commands))
+        self.assertEqual(metadata.help_primitives, metadata.commands)
 
-        cmd_table = re.search(
-            r"^cmd_table:\n(?P<body>.*?)^\s*dw\s+0\b",
-            text,
-            re.MULTILINE | re.DOTALL,
+    def test_readme_protocol_examples_match_kernel_metadata(self) -> None:
+        metadata = extract_kernel_protocol_metadata()
+        readme = README_MD.read_text(encoding="utf-8")
+
+        self.assertIn(
+            f"{metadata.ready_banner}\n> help\n"
+            f"< ok primitives={','.join(metadata.commands)}",
+            readme,
         )
-        self.assertIsNotNone(cmd_table)
-        cmd_labels = re.findall(
-            r"^\s*dw\s+(cmd_[A-Za-z0-9_]+),\s+h_[A-Za-z0-9_]+",
-            cmd_table.group("body"),
+        self.assertEqual(extract_readme_primitive_commands(), metadata.commands)
+
+    def test_protocol_boot_banner_matches_kernel_metadata(self) -> None:
+        metadata = extract_kernel_protocol_metadata()
+        protocol = PROTOCOL_MD.read_text(encoding="utf-8")
+
+        title = re.search(
+            r"^# llmos wire protocol v(?P<proto>[0-9]+)$",
+            protocol,
             re.MULTILINE,
         )
+        self.assertIsNotNone(title)
+        self.assertEqual(int(title.group("proto")), metadata.proto)
+        self.assertIn(metadata.ready_banner, protocol)
 
-        command_defs = dict(
-            re.findall(
-                r"^(cmd_[A-Za-z0-9_]+):\s+db\s+'([^']+)',\s*0",
-                text,
-                re.MULTILINE,
-            )
-        )
-        missing_commands = [label for label in cmd_labels if label not in command_defs]
-        self.assertEqual(missing_commands, [])
-        commands = [command_defs[label] for label in cmd_labels]
-
-        schema_table = re.search(
-            r"^schema_table:\n(?P<body>.*?)^\s*dw\s+0\b",
-            text,
-            re.MULTILINE | re.DOTALL,
-        )
-        self.assertIsNotNone(schema_table)
-        schema_labels = re.findall(
-            r"^\s*dw\s+(cmd_[A-Za-z0-9_]+),\s+sch_[A-Za-z0-9_]+",
-            schema_table.group("body"),
-            re.MULTILINE,
-        )
-        self.assertEqual(schema_labels, cmd_labels)
-
-        ready_msg = re.search(
-            r"^ready_msg:\s+db '# llmos [^']* primitives=([0-9]+)'",
-            text,
-            re.MULTILINE,
-        )
-        self.assertIsNotNone(ready_msg)
-        self.assertEqual(int(ready_msg.group(1)), len(commands))
-
-        help_response = re.search(
-            r"^help_response:\n\s+db 'ok primitives=([^']+)', 0",
-            text,
-            re.MULTILINE,
-        )
-        self.assertIsNotNone(help_response)
-        self.assertEqual(help_response.group(1).split(","), commands)
+    def test_io_allowlist_schema_matches_compiled_ports(self) -> None:
+        metadata = extract_kernel_protocol_metadata()
+        self.assertEqual(metadata.io_schema_allowlist, metadata.io_allowlist)
 
     def test_mmio_fs_reads_restore_fs_before_helper_calls(self) -> None:
         text = KERNEL_ASM.read_text(encoding="utf-8")
