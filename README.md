@@ -199,6 +199,7 @@ make               # build/llmos.img
 make test-bridge   # run bridge unit tests
 make smoke         # replay shipped transcripts through QEMU
 make check         # build + bridge tests + transcript smoke
+make ci-check      # build + bridge tests + extended protocol smoke
 make run           # run in QEMU, COM1 on stdio, VGA suppressed
 make run-gui       # run in QEMU with the VGA window visible
 make debug         # paused at start, gdb stub on :1234

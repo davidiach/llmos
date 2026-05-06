@@ -21,11 +21,13 @@ MAX_KERNEL_BYTES := $(shell expr $(KERNEL_SECTORS) \* 512)
 # QEMU window if you remove -display none).
 QEMU_ARGS  := -drive format=raw,if=floppy,file=$(IMG) -serial stdio -display none
 
-.PHONY: all run run-gui debug clean check smoke ci-smoke test-bridge
+.PHONY: all run run-gui debug clean check ci-check smoke ci-smoke test-bridge
 
 all: $(IMG)
 
 check: all test-bridge smoke
+
+ci-check: all test-bridge ci-smoke
 
 $(BUILD_DIR):
 	@mkdir -p $(BUILD_DIR)

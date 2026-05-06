@@ -26,20 +26,14 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends nasm qemu-system-x86
 
-      - name: Build
-        run: make
-
-      - name: Run bridge unit tests
-        run: make test-bridge
+      - name: Build and run local CI checks
+        run: make ci-check
 
       - name: Report sizes
         run: |
           echo "boot.bin:   $(wc -c < build/boot.bin) bytes"
           echo "kernel.bin: $(wc -c < build/kernel.bin) bytes"
           echo "llmos.img:  $(wc -c < build/llmos.img) bytes"
-
-      - name: Smoke-test the protocol
-        run: bash demo/ci_smoke.sh
 
       - name: Check bridge boot-timeout cleanup
         run: |
