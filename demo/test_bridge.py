@@ -374,6 +374,20 @@ class KernelMetadataTests(unittest.TestCase):
         self.assertIsNotNone(help_response)
         self.assertEqual(help_response.group(1).split(","), commands)
 
+    def test_mmio_fs_reads_restore_fs_before_helper_calls(self) -> None:
+        text = KERNEL_ASM.read_text(encoding="utf-8")
+
+        fs_reads = re.findall(
+            r"^\s*mov\s+(?:al|ax|eax),\s+\[fs:esi\]\n(?P<next>^\s*\S.*)",
+            text,
+            re.MULTILINE,
+        )
+        self.assertEqual(len(fs_reads), 4)
+        self.assertTrue(
+            all(re.match(r"^\s*pop\s+fs\b", next_line) for next_line in fs_reads),
+            fs_reads,
+        )
+
 
 class BridgeModeTests(unittest.TestCase):
     def test_mode_script_preserves_exact_non_comment_lines(self) -> None:
