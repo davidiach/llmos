@@ -615,18 +615,18 @@ h_mem_read_seg:
     mov     si, resp_data_kw
     call    serial_puts_only
 
-    push    es
-    mov     ax, [mem_seg]
-    mov     es, ax
     mov     cx, [mem_len]
     mov     bx, [mem_addr]
     xor     di, di
 .dump:
+    push    es
+    mov     ax, [mem_seg]
+    mov     es, ax
     mov     al, [es:bx+di]
+    pop     es
     call    serial_put_hex_byte
     inc     di
     loop    .dump
-    pop     es
     call    respond_end
     ret
 .usage:
