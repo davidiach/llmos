@@ -70,23 +70,27 @@ class LlmosSession:
             stderr=subprocess.PIPE,
             bufsize=0,
         )
-        if self.proc.stdin is None or self.proc.stdout is None or self.proc.stderr is None:
-            raise RuntimeError("failed to open llmos stdio pipes")
-        self._stdout_queue: queue.Queue[bytes | None] = queue.Queue()
-        self._stdout_thread = threading.Thread(
-            target=self._pump_stdout,
-            name="llmos-stdout",
-            daemon=True,
-        )
-        self._stderr_thread = threading.Thread(
-            target=self._pump_stderr,
-            name="llmos-stderr",
-            daemon=True,
-        )
-        self._stdout_thread.start()
-        self._stderr_thread.start()
-        self._sync_lost = False
         try:
+            if (
+                self.proc.stdin is None
+                or self.proc.stdout is None
+                or self.proc.stderr is None
+            ):
+                raise RuntimeError("failed to open llmos stdio pipes")
+            self._stdout_queue: queue.Queue[bytes | None] = queue.Queue()
+            self._stdout_thread = threading.Thread(
+                target=self._pump_stdout,
+                name="llmos-stdout",
+                daemon=True,
+            )
+            self._stderr_thread = threading.Thread(
+                target=self._pump_stderr,
+                name="llmos-stderr",
+                daemon=True,
+            )
+            self._stdout_thread.start()
+            self._stderr_thread.start()
+            self._sync_lost = False
             self.banner = self._await_banner(boot_timeout)
         except BaseException as exc:
             qemu_exited = self.proc.poll() is not None
@@ -219,6 +223,13 @@ class LlmosSession:
             thread = getattr(self, thread_name, None)
             if thread is not None and thread.is_alive():
                 thread.join(timeout=0.2)
+        for pipe_name in ("stdin", "stdout", "stderr"):
+            pipe = getattr(self.proc, pipe_name, None)
+            if pipe is not None:
+                try:
+                    pipe.close()
+                except Exception:
+                    pass
 
 
 # ---------------------------------------------------------------------------
