@@ -10,6 +10,7 @@ from __future__ import annotations
 import contextlib
 import io
 import os
+import queue
 import re
 import sys
 import tempfile
@@ -383,6 +384,26 @@ class FakeThread:
         self.events.append(f"join:{self.name}")
 
 
+class ByteStreamPipe:
+    def __init__(self, data: bytes) -> None:
+        self.data = bytearray(data)
+
+    def read(self, size: int) -> bytes:
+        if not self.data:
+            return b""
+        return bytes([self.data.pop(0)])
+
+
+class EndlessPipe:
+    def __init__(self, byte: bytes = b"x") -> None:
+        self.byte = byte
+        self.reads = 0
+
+    def read(self, size: int) -> bytes:
+        self.reads += 1
+        return self.byte
+
+
 class BridgeSessionTests(unittest.TestCase):
     def image_path(self, tmp: str) -> Path:
         image = Path(tmp) / "llmos.img"
@@ -430,6 +451,74 @@ class BridgeSessionTests(unittest.TestCase):
 
         self.assertLess(events.index("join:stdout"), events.index("close:stdout"))
         self.assertLess(events.index("join:stderr"), events.index("close:stderr"))
+
+    def test_readline_accepts_line_at_cap_and_ignores_carriage_returns(self) -> None:
+        session = object.__new__(bridge.LlmosSession)
+        session._stdout_queue = queue.Queue()
+        for ch in b"ab\rc\n":
+            session._stdout_queue.put(bytes([ch]))
+
+        with patch("demo.bridge.MAX_RESPONSE_LINE_BYTES", 3):
+            self.assertEqual(session._readline(timeout=1.0), "abc")
+
+    def test_stdout_pump_drops_carriage_returns_without_counting_them(self) -> None:
+        session = object.__new__(bridge.LlmosSession)
+        session.proc = SimpleNamespace(stdout=ByteStreamPipe(b"ab\rc\n"))
+        session._stdout_queue = queue.Queue()
+
+        with patch("demo.bridge.MAX_RESPONSE_LINE_BYTES", 3):
+            session._pump_stdout()
+
+        self.assertEqual(
+            list(session._stdout_queue.queue),
+            [b"a", b"b", b"c", b"\n", None],
+        )
+
+    def test_readline_rejects_overlong_response_line(self) -> None:
+        session = object.__new__(bridge.LlmosSession)
+        session._stdout_queue = queue.Queue()
+        for ch in b"abcde":
+            session._stdout_queue.put(bytes([ch]))
+
+        with patch("demo.bridge.MAX_RESPONSE_LINE_BYTES", 4):
+            with self.assertRaisesRegex(
+                bridge.ProtocolSyncError,
+                "response line exceeded 4 bytes",
+            ):
+                session._readline(timeout=1.0)
+
+    def test_stdout_pump_stops_after_overlong_response_line(self) -> None:
+        stdout = EndlessPipe()
+        session = object.__new__(bridge.LlmosSession)
+        session.proc = SimpleNamespace(stdout=stdout)
+        session._stdout_queue = queue.Queue()
+
+        with patch("demo.bridge.MAX_RESPONSE_LINE_BYTES", 4):
+            session._pump_stdout()
+
+        queued = list(session._stdout_queue.queue)
+        self.assertEqual(stdout.reads, 5)
+        self.assertEqual(queued[:4], [b"x", b"x", b"x", b"x"])
+        self.assertIsInstance(queued[4], bridge.ProtocolSyncError)
+        self.assertIsNone(queued[5])
+
+    def test_send_marks_sync_lost_after_protocol_sync_error(self) -> None:
+        session = object.__new__(bridge.LlmosSession)
+        session.proc = SimpleNamespace(stdin=io.BytesIO())
+        session._sync_lost = False
+        session.log = []
+
+        with patch.object(
+            session,
+            "_readline",
+            side_effect=bridge.ProtocolSyncError("line too long"),
+        ):
+            with self.assertRaisesRegex(bridge.ProtocolSyncError, "line too long"):
+                session.send("help")
+
+        self.assertTrue(session._sync_lost)
+        with self.assertRaisesRegex(RuntimeError, "desynchronized"):
+            session.send("help")
 
     def test_await_banner_ignores_non_ready_system_lines(self) -> None:
         session = object.__new__(bridge.LlmosSession)
