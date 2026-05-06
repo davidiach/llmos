@@ -29,6 +29,7 @@ import demo.bridge as bridge
 KERNEL_ASM = Path(__file__).resolve().parents[1] / "src" / "kernel.asm"
 README_MD = Path(__file__).resolve().parents[1] / "README.md"
 PROTOCOL_MD = Path(__file__).resolve().parents[1] / "docs" / "PROTOCOL.md"
+RECORDINGS_DIR = Path(__file__).resolve().parent / "recordings"
 
 
 class KernelProtocolMetadata(NamedTuple):
@@ -41,6 +42,7 @@ class KernelProtocolMetadata(NamedTuple):
     help_primitives: list[str]
     io_allowlist: list[int]
     io_schema_allowlist: list[int]
+    schema_by_command: dict[str, str]
 
 
 def extract_kernel_protocol_metadata() -> KernelProtocolMetadata:
@@ -78,11 +80,28 @@ def extract_kernel_protocol_metadata() -> KernelProtocolMetadata:
     )
     if schema_table is None:
         raise AssertionError("missing schema_table")
-    schema_labels = re.findall(
-        r"^\s*dw\s+(cmd_[A-Za-z0-9_]+),\s+sch_[A-Za-z0-9_]+",
+    schema_table_entries = re.findall(
+        r"^\s*dw\s+(cmd_[A-Za-z0-9_]+),\s+(sch_[A-Za-z0-9_]+)",
         schema_table.group("body"),
         re.MULTILINE,
     )
+    schema_labels = [cmd_label for cmd_label, _schema_label in schema_table_entries]
+    schema_defs = dict(
+        re.findall(
+            r"^(sch_[A-Za-z0-9_]+):\s+db\s+'([^']+)',\s*0",
+            text,
+            re.MULTILINE,
+        )
+    )
+    missing_schemas = [
+        label for _cmd_label, label in schema_table_entries if label not in schema_defs
+    ]
+    if missing_schemas:
+        raise AssertionError(f"missing schema definitions: {missing_schemas}")
+    schema_by_command = {
+        command_defs[cmd_label]: schema_defs[schema_label]
+        for cmd_label, schema_label in schema_table_entries
+    }
 
     ready_msg = re.search(
         r"^ready_msg:\s+db '([^']+)',\s*13,\s*10,\s*0",
@@ -142,6 +161,7 @@ def extract_kernel_protocol_metadata() -> KernelProtocolMetadata:
         help_primitives=help_primitives,
         io_allowlist=compiled_ports,
         io_schema_allowlist=schema_ports,
+        schema_by_command=schema_by_command,
     )
 
 
@@ -165,6 +185,28 @@ def extract_readme_primitive_commands() -> list[str]:
             raise AssertionError(f"malformed README command cell: {cells[0]}")
         commands.append(command.group(1))
     return commands
+
+
+def iter_recorded_describe_outputs() -> list[tuple[Path, int, str, str]]:
+    outputs: list[tuple[Path, int, str, str]] = []
+    for recording in sorted(RECORDINGS_DIR.glob("*.txt")):
+        lines = recording.read_text(encoding="utf-8").splitlines()
+        for index, line in enumerate(lines[:-1]):
+            if not line.startswith("> describe "):
+                continue
+            response = lines[index + 1]
+            request = re.fullmatch(r"> describe ([a-z0-9_.]+)", line)
+            if request is None:
+                if response.startswith("< ok name="):
+                    raise AssertionError(
+                        f"{recording}:{index + 1}: "
+                        f"malformed describe request returned ok: {line}"
+                    )
+                continue
+            if not response.startswith("< ok name="):
+                continue
+            outputs.append((recording, index + 2, request.group(1), response[2:]))
+    return outputs
 
 
 class BridgeHelperTests(unittest.TestCase):
@@ -619,6 +661,24 @@ class KernelMetadataTests(unittest.TestCase):
     def test_io_allowlist_schema_matches_compiled_ports(self) -> None:
         metadata = extract_kernel_protocol_metadata()
         self.assertEqual(metadata.io_schema_allowlist, metadata.io_allowlist)
+
+    def test_recorded_describe_outputs_match_kernel_schemas(self) -> None:
+        metadata = extract_kernel_protocol_metadata()
+        recorded_outputs = iter_recorded_describe_outputs()
+        recorded_primitives = {
+            primitive for _recording, _line, primitive, _actual in recorded_outputs
+        }
+
+        self.assertGreaterEqual(len(recorded_outputs), len(metadata.commands))
+        self.assertTrue(set(metadata.commands).issubset(recorded_primitives))
+        for recording, line_number, primitive, actual in recorded_outputs:
+            with self.subTest(
+                recording=recording.name,
+                line=line_number,
+                primitive=primitive,
+            ):
+                self.assertIn(primitive, metadata.schema_by_command)
+                self.assertEqual(actual, metadata.schema_by_command[primitive])
 
     def test_mmio_fs_reads_restore_fs_before_helper_calls(self) -> None:
         text = KERNEL_ASM.read_text(encoding="utf-8")
