@@ -185,7 +185,113 @@ class ClientRaising:
         raise self._exc
 
 
+class ClosablePipe:
+    def __init__(self, name: str = "pipe", events: list[str] | None = None) -> None:
+        self.name = name
+        self.events = events
+        self.closed = False
+
+    def read(self, size: int) -> bytes:
+        return b""
+
+    def close(self) -> None:
+        self.closed = True
+        if self.events is not None:
+            self.events.append(f"close:{self.name}")
+
+
+class FakeProcess:
+    def __init__(self, stdin=..., events: list[str] | None = None):
+        self.events = events
+        self.stdin = ClosablePipe("stdin", events) if stdin is ... else stdin
+        self.stdout = ClosablePipe("stdout", events)
+        self.stderr = ClosablePipe("stderr", events)
+        self.terminated = False
+        self.killed = False
+        self.wait_calls = 0
+        self.returncode = None
+
+    def poll(self):
+        return self.returncode
+
+    def terminate(self) -> None:
+        self.terminated = True
+        if self.events is not None:
+            self.events.append("terminate")
+
+    def kill(self) -> None:
+        self.killed = True
+        if self.events is not None:
+            self.events.append("kill")
+
+    def wait(self, timeout=None):
+        self.wait_calls += 1
+        if self.events is not None:
+            self.events.append("wait")
+        self.returncode = 0
+        return self.returncode
+
+
+class FakeThread:
+    def __init__(self, name: str, events: list[str]) -> None:
+        self.name = name
+        self.events = events
+
+    def is_alive(self) -> bool:
+        return True
+
+    def join(self, timeout=None) -> None:
+        self.events.append(f"join:{self.name}")
+
+
 class BridgeSessionTests(unittest.TestCase):
+    def image_path(self, tmp: str) -> Path:
+        image = Path(tmp) / "llmos.img"
+        image.write_bytes(b"fake")
+        return image
+
+    def test_init_closes_process_when_stdio_pipe_validation_fails(self) -> None:
+        proc = FakeProcess(stdin=None)
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch("demo.bridge.subprocess.Popen", return_value=proc):
+                with self.assertRaisesRegex(RuntimeError, "stdio pipes"):
+                    bridge.LlmosSession(self.image_path(tmp))
+
+        self.assertTrue(proc.terminated)
+        self.assertEqual(proc.wait_calls, 1)
+        self.assertTrue(proc.stdout.closed)
+        self.assertTrue(proc.stderr.closed)
+
+    def test_init_closes_process_when_banner_wait_fails(self) -> None:
+        proc = FakeProcess()
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch("demo.bridge.subprocess.Popen", return_value=proc):
+                with patch.object(
+                    bridge.LlmosSession,
+                    "_await_banner",
+                    side_effect=TimeoutError("synthetic banner timeout"),
+                ):
+                    with self.assertRaisesRegex(TimeoutError, "synthetic banner"):
+                        bridge.LlmosSession(self.image_path(tmp))
+
+        self.assertTrue(proc.terminated)
+        self.assertEqual(proc.wait_calls, 1)
+        self.assertTrue(proc.stdin.closed)
+        self.assertTrue(proc.stdout.closed)
+        self.assertTrue(proc.stderr.closed)
+
+    def test_close_joins_pumps_before_closing_reader_pipes(self) -> None:
+        events: list[str] = []
+        session = object.__new__(bridge.LlmosSession)
+        session.proc = FakeProcess(events=events)
+        session._stdout_thread = FakeThread("stdout", events)
+        session._stderr_thread = FakeThread("stderr", events)
+
+        session.close()
+
+        self.assertLess(events.index("join:stdout"), events.index("close:stdout"))
+        self.assertLess(events.index("join:stderr"), events.index("close:stderr"))
+
     def test_await_banner_ignores_non_ready_system_lines(self) -> None:
         session = object.__new__(bridge.LlmosSession)
         lines = iter(
