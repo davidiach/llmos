@@ -43,6 +43,16 @@ def is_ready_banner(line: str) -> bool:
     return READY_BANNER_RE.fullmatch(line) is not None
 
 
+def is_response_line(line: str) -> bool:
+    """Return true only for a single llmos response status line."""
+    return (
+        line == "ok"
+        or line.startswith("ok ")
+        or line == "err"
+        or line.startswith("err ")
+    )
+
+
 class LlmosSession:
     """A running llmos instance. Send commands, get back response lines."""
 
@@ -227,6 +237,9 @@ class LlmosSession:
         except (EOFError, TimeoutError, ProtocolSyncError):
             self._sync_lost = True
             raise
+        if not is_response_line(resp):
+            self._sync_lost = True
+            raise ProtocolSyncError(f"unexpected response line: {resp!r}")
         self.log.append((cmd, resp))
         return resp
 
