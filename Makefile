@@ -11,6 +11,7 @@ BUILD_DIR  := build
 BOOT_BIN   := $(BUILD_DIR)/boot.bin
 KERNEL_BIN := $(BUILD_DIR)/kernel.bin
 IMG        := $(BUILD_DIR)/llmos.img
+SECTOR_CHECK := $(BUILD_DIR)/kernel-sectors.ok
 
 KERNEL_SECTORS   := 32
 MAX_KERNEL_BYTES := $(shell expr $(KERNEL_SECTORS) \* 512)
@@ -29,7 +30,16 @@ check: all test-bridge smoke
 $(BUILD_DIR):
 	@mkdir -p $(BUILD_DIR)
 
-$(BOOT_BIN): $(SRC_DIR)/boot.asm | $(BUILD_DIR)
+$(SECTOR_CHECK): Makefile $(SRC_DIR)/boot.asm | $(BUILD_DIR)
+	@sectors=$$(sed -n 's/^KERNEL_SECTORS[[:space:]]*equ[[:space:]]*\([0-9][0-9]*\).*/\1/p' $(SRC_DIR)/boot.asm); \
+	  if [ "$$sectors" != "$(KERNEL_SECTORS)" ]; then \
+	    printf "error: boot.asm KERNEL_SECTORS (%s) must match Makefile (%s)\n" \
+	      "$$sectors" "$(KERNEL_SECTORS)"; \
+	    exit 1; \
+	  fi
+	@printf "%s\n" "$(KERNEL_SECTORS)" > $@
+
+$(BOOT_BIN): $(SRC_DIR)/boot.asm $(SECTOR_CHECK) | $(BUILD_DIR)
 	$(AS) -f bin $< -o $@
 	@sz=$$(wc -c < $@); \
 	  if [ $$sz -ne 512 ]; then \
