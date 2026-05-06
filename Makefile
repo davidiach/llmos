@@ -81,11 +81,14 @@ test-bridge:
 
 smoke: $(IMG)
 	@set -e; \
+	tmpdir=$$(mktemp -d "$${TMPDIR:-/tmp}/llmos-smoke.XXXXXX"); \
+	trap 'rm -rf "$$tmpdir"' EXIT; \
 	for t in demo/transcripts/*.llmos; do \
 	  name=$${t##*/}; name=$${name%.llmos}; \
+	  out="$$tmpdir/$$name.out"; \
 	  printf "smoke %s\n" "$$name"; \
-	  timeout 30 python3 demo/bridge.py --image $(IMG) script "$$t" > "/tmp/llmos-smoke-$$name.out"; \
-	  grep -q '^# llmos v0\.1 proto=1 primitives=29' "/tmp/llmos-smoke-$$name.out"; \
+	  timeout 30 python3 demo/bridge.py --image $(IMG) script "$$t" > "$$out"; \
+	  grep -q '^# llmos v0\.1 proto=1 primitives=29' "$$out"; \
 	done; \
 	echo "smoke transcripts passed"
 
