@@ -42,28 +42,40 @@ class BridgeHelperTests(unittest.TestCase):
     def test_command_for_log_escapes_non_printable_bytes(self) -> None:
         self.assertEqual(bridge.command_for_log("help\x00"), "'help\\x00'")
 
-    def test_extract_ai_command_uses_last_plain_line(self) -> None:
+    def test_extract_ai_command_accepts_single_plain_command(self) -> None:
+        self.assertEqual(bridge.extract_ai_command("help"), "help")
         self.assertEqual(
-            bridge.extract_ai_command("I will inspect it.\n`help`"),
-            "help",
+            bridge.extract_ai_command("describe cpu.vendor"),
+            "describe cpu.vendor",
         )
+        self.assertEqual(bridge.extract_ai_command("DONE"), "DONE")
 
-    def test_extract_ai_command_accepts_single_fenced_command(self) -> None:
-        self.assertEqual(
-            bridge.extract_ai_command("```llmos\nmem.query\n```\nDone."),
-            "mem.query",
-        )
+    def test_extract_ai_command_rejects_inline_code(self) -> None:
+        with self.assertRaisesRegex(ValueError, "bare command line"):
+            bridge.extract_ai_command("`help`")
+
+    def test_extract_ai_command_rejects_fenced_command(self) -> None:
+        with self.assertRaisesRegex(ValueError, "bare command line"):
+            bridge.extract_ai_command("```llmos\nmem.query\n```")
+
+    def test_extract_ai_command_rejects_plain_commentary(self) -> None:
+        with self.assertRaisesRegex(ValueError, "bare command line"):
+            bridge.extract_ai_command("I will inspect it.\n`help`")
+
+    def test_extract_ai_command_rejects_fenced_commentary(self) -> None:
+        with self.assertRaisesRegex(ValueError, "bare command line"):
+            bridge.extract_ai_command("```llmos\nhelp\n```\nDone.")
 
     def test_extract_ai_command_rejects_multi_line_fence(self) -> None:
-        with self.assertRaisesRegex(ValueError, "ambiguous command block"):
+        with self.assertRaisesRegex(ValueError, "bare command line"):
             bridge.extract_ai_command("```llmos\nhelp\nmem.query\n```")
 
     def test_extract_ai_command_rejects_multiple_fences(self) -> None:
-        with self.assertRaisesRegex(ValueError, "ambiguous command blocks"):
+        with self.assertRaisesRegex(ValueError, "bare command line"):
             bridge.extract_ai_command("```llmos\nhelp\n```\n```llmos\nmem.query\n```")
 
     def test_extract_ai_command_rejects_unterminated_fence(self) -> None:
-        with self.assertRaisesRegex(ValueError, "unterminated command block"):
+        with self.assertRaisesRegex(ValueError, "bare command line"):
             bridge.extract_ai_command("```llmos\nhelp")
 
     def test_extract_ai_command_returns_empty_for_empty_text(self) -> None:
@@ -300,7 +312,7 @@ class BridgeModeTests(unittest.TestCase):
         self.assertEqual(rc, 1)
         self.assertIn("# ai error: empty command", out.getvalue())
 
-    def test_mode_ai_extracts_wrapped_command(self) -> None:
+    def test_mode_ai_reports_wrapped_command(self) -> None:
         session = FakeSession()
         out = io.StringIO()
         with contextlib.redirect_stdout(out):
@@ -308,14 +320,16 @@ class BridgeModeTests(unittest.TestCase):
                 session,
                 "task",
                 step_limit=1,
-                client=ClientReturning("```llmos\nhelp\n```\nThat should list commands."),
+                client=ClientReturning("```llmos\nhelp\n```"),
             )
         self.assertEqual(rc, 1)
-        self.assertEqual(session.commands, ["help"])
-        self.assertIn("> help", out.getvalue())
-        self.assertNotIn("```", out.getvalue())
+        self.assertEqual(session.commands, [])
+        self.assertIn(
+            "# ai error: AI response must be exactly one bare command line",
+            out.getvalue(),
+        )
 
-    def test_mode_ai_keeps_split_text_blocks_distinct(self) -> None:
+    def test_mode_ai_reports_split_text_commentary(self) -> None:
         session = FakeSession()
         out = io.StringIO()
         with contextlib.redirect_stdout(out):
@@ -326,8 +340,25 @@ class BridgeModeTests(unittest.TestCase):
                 client=ClientReturning("Here is the command:", "`help`"),
             )
         self.assertEqual(rc, 1)
-        self.assertEqual(session.commands, ["help"])
-        self.assertIn("> help", out.getvalue())
+        self.assertEqual(session.commands, [])
+        self.assertIn(
+            "# ai error: AI response must be exactly one bare command line",
+            out.getvalue(),
+        )
+
+    def test_mode_ai_requires_exact_done_case(self) -> None:
+        session = FakeSession()
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            rc = bridge.mode_ai(
+                session,
+                "task",
+                step_limit=1,
+                client=ClientReturning("done"),
+            )
+        self.assertEqual(rc, 1)
+        self.assertEqual(session.commands, ["done"])
+        self.assertIn("# step limit reached", out.getvalue())
 
     def test_mode_ai_reports_ambiguous_command_block(self) -> None:
         out = io.StringIO()
@@ -339,7 +370,10 @@ class BridgeModeTests(unittest.TestCase):
                 client=ClientReturning("```llmos\nhelp\nmem.query\n```"),
             )
         self.assertEqual(rc, 1)
-        self.assertIn("# ai error: ambiguous command block", out.getvalue())
+        self.assertIn(
+            "# ai error: AI response must be exactly one bare command line",
+            out.getvalue(),
+        )
 
     def test_mode_ai_uses_model_from_environment(self) -> None:
         client = ClientReturning("DONE")
