@@ -31,6 +31,7 @@ README_MD = Path(__file__).resolve().parents[1] / "README.md"
 PROTOCOL_MD = Path(__file__).resolve().parents[1] / "docs" / "PROTOCOL.md"
 RECORDINGS_DIR = Path(__file__).resolve().parent / "recordings"
 TRANSCRIPTS_DIR = Path(__file__).resolve().parent / "transcripts"
+CI_SMOKE_SH = Path(__file__).resolve().parent / "ci_smoke.sh"
 
 
 class KernelProtocolMetadata(NamedTuple):
@@ -714,6 +715,34 @@ class KernelMetadataTests(unittest.TestCase):
             if legacy_bdf in path.read_text(encoding="utf-8")
         ]
         self.assertEqual(offenders, [])
+
+    def test_ci_smoke_replays_every_shipped_transcript(self) -> None:
+        transcript_name_re = re.compile(r"[0-9]{2}_[a-z0-9]+(?:_[a-z0-9]+)*")
+        replayed_transcripts: list[str] = []
+        for line_number, line in enumerate(
+            CI_SMOKE_SH.read_text(encoding="utf-8").splitlines(),
+            1,
+        ):
+            if re.match(r"\s*run_transcript\s+", line) is None:
+                continue
+            match = re.fullmatch(
+                rf"run_transcript (?P<name>{transcript_name_re.pattern})",
+                line,
+            )
+            if match is None:
+                self.fail(f"{CI_SMOKE_SH}:{line_number}: malformed run_transcript line")
+            replayed_transcripts.append(match.group("name"))
+
+        shipped_transcripts = [
+            path.stem for path in sorted(TRANSCRIPTS_DIR.glob("*.llmos"))
+        ]
+        malformed_transcripts = [
+            name
+            for name in shipped_transcripts
+            if transcript_name_re.fullmatch(name) is None
+        ]
+        self.assertEqual(malformed_transcripts, [])
+        self.assertEqual(replayed_transcripts, shipped_transcripts)
 
     def test_mmio_fs_reads_restore_fs_before_helper_calls(self) -> None:
         text = KERNEL_ASM.read_text(encoding="utf-8")
