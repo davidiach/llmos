@@ -1235,7 +1235,7 @@ jobs:
               raise SystemExit(f"empty AI command was not reported cleanly: {out.getvalue()!r}")
           PY
 
-      - name: Check bridge AI wrapped command
+      - name: Check bridge AI wrapped command rejection
         run: |
           python3 - <<'PY'
           import contextlib
@@ -1255,7 +1255,7 @@ jobs:
 
           class WrappedTextBlock:
               type = "text"
-              text = "```llmos\nhelp\n```\nThat should list commands."
+              text = "```llmos\nhelp\n```"
 
           class WrappedResponse:
               content = [WrappedTextBlock()]
@@ -1271,13 +1271,13 @@ jobs:
           out = io.StringIO()
           with contextlib.redirect_stdout(out):
               mode_ai(session, "task", step_limit=1, client=WrappedClient())
-          if session.commands != ["help"]:
-              raise SystemExit(f"wrapped AI command was not extracted: {session.commands!r}")
-          if "> help" not in out.getvalue() or "```" in out.getvalue():
-              raise SystemExit(f"wrapped AI command was not logged cleanly: {out.getvalue()!r}")
+          if session.commands:
+              raise SystemExit(f"wrapped AI command was sent: {session.commands!r}")
+          if "# ai error: AI response must be exactly one bare command line" not in out.getvalue():
+              raise SystemExit(f"wrapped AI command was not rejected: {out.getvalue()!r}")
           PY
 
-      - name: Check bridge AI split text blocks
+      - name: Check bridge AI split text commentary
         run: |
           python3 - <<'PY'
           import contextlib
@@ -1317,10 +1317,10 @@ jobs:
           out = io.StringIO()
           with contextlib.redirect_stdout(out):
               mode_ai(session, "task", step_limit=1, client=SplitClient())
-          if session.commands != ["help"]:
-              raise SystemExit(f"split AI text blocks were fused: {session.commands!r}")
-          if "> help" not in out.getvalue():
-              raise SystemExit(f"split AI command was not logged cleanly: {out.getvalue()!r}")
+          if session.commands:
+              raise SystemExit(f"split AI commentary sent a command: {session.commands!r}")
+          if "# ai error: AI response must be exactly one bare command line" not in out.getvalue():
+              raise SystemExit(f"split AI commentary was not rejected: {out.getvalue()!r}")
           PY
 
       - name: Check bridge AI ambiguous command block
@@ -1354,7 +1354,7 @@ jobs:
           out = io.StringIO()
           with contextlib.redirect_stdout(out):
               mode_ai(FakeSession(), "task", step_limit=1, client=AmbiguousClient())
-          if "# ai error: ambiguous command block" not in out.getvalue():
+          if "# ai error: AI response must be exactly one bare command line" not in out.getvalue():
               raise SystemExit(f"ambiguous command block was not rejected: {out.getvalue()!r}")
           PY
 
@@ -1389,7 +1389,7 @@ jobs:
           out = io.StringIO()
           with contextlib.redirect_stdout(out):
               mode_ai(FakeSession(), "task", step_limit=1, client=AmbiguousBlocksClient())
-          if "# ai error: ambiguous command blocks" not in out.getvalue():
+          if "# ai error: AI response must be exactly one bare command line" not in out.getvalue():
               raise SystemExit(f"ambiguous command blocks were not rejected: {out.getvalue()!r}")
           PY
 
@@ -1424,7 +1424,7 @@ jobs:
           out = io.StringIO()
           with contextlib.redirect_stdout(out):
               mode_ai(FakeSession(), "task", step_limit=1, client=UnterminatedClient())
-          if "# ai error: unterminated command block" not in out.getvalue():
+          if "# ai error: AI response must be exactly one bare command line" not in out.getvalue():
               raise SystemExit(f"unterminated command block was not rejected: {out.getvalue()!r}")
           PY
 

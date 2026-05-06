@@ -234,39 +234,12 @@ def command_for_log(cmd: str) -> str:
 
 def extract_ai_command(text: str) -> str:
     """Extract the command from an AI text response."""
-    fenced_blocks: list[list[str]] = []
-    block: list[str] = []
-    in_fence = False
-    for line in text.splitlines():
-        stripped = line.strip()
-        if stripped.startswith("```"):
-            if in_fence:
-                fenced_blocks.append(block)
-                block = []
-                in_fence = False
-            else:
-                block = []
-                in_fence = True
-            continue
-        if in_fence:
-            block.append(line)
-    if in_fence:
-        raise ValueError("unterminated command block")
-
-    if fenced_blocks:
-        if len(fenced_blocks) > 1:
-            raise ValueError("ambiguous command blocks")
-        lines = [line.strip() for line in fenced_blocks[-1] if line.strip()]
-        if len(lines) > 1:
-            raise ValueError("ambiguous command block")
-    else:
-        lines = [line.strip() for line in text.splitlines() if line.strip()]
-    if not lines:
+    stripped = text.strip()
+    if not stripped:
         return ""
-    cmd = lines[-1]
-    if len(cmd) >= 2 and cmd.startswith("`") and cmd.endswith("`"):
-        cmd = cmd.strip("`").strip()
-    return cmd
+    if len(stripped.splitlines()) != 1 or "`" in stripped:
+        raise ValueError("AI response must be exactly one bare command line")
+    return stripped
 
 
 def mode_repl(session: LlmosSession) -> int:
@@ -434,7 +407,7 @@ def mode_ai(
             print("# ai error: empty command")
             return 1
         print(f"> {command_for_log(cmd)}")
-        if cmd.upper() == "DONE":
+        if cmd == "DONE":
             print("# claude signalled task complete")
             return 0
         try:
