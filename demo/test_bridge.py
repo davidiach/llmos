@@ -189,6 +189,16 @@ def extract_readme_primitive_commands() -> list[str]:
     return commands
 
 
+def extract_readme_demo_transcript_stems() -> list[str]:
+    text = README_MD.read_text(encoding="utf-8")
+    return re.findall(
+        r"^Transcript: `demo/transcripts/"
+        r"([0-9]{2}_[a-z0-9]+(?:_[a-z0-9]+)*)\.llmos`\.$",
+        text,
+        re.MULTILINE,
+    )
+
+
 def iter_recorded_describe_outputs() -> list[tuple[Path, int, str, str]]:
     outputs: list[tuple[Path, int, str, str]] = []
     for recording in sorted(RECORDINGS_DIR.glob("*.txt")):
@@ -698,6 +708,13 @@ class KernelMetadataTests(unittest.TestCase):
             ):
                 self.assertIn(primitive, metadata.schema_by_command)
                 self.assertEqual(actual, metadata.schema_by_command[primitive])
+
+    def test_readme_demo_beats_match_shipped_transcripts(self) -> None:
+        documented_transcripts = extract_readme_demo_transcript_stems()
+        shipped_transcripts = [
+            path.stem for path in sorted(TRANSCRIPTS_DIR.glob("*.llmos"))
+        ]
+        self.assertEqual(documented_transcripts, shipped_transcripts)
 
     def test_protocol_files_use_fixed_width_bdf_notation(self) -> None:
         legacy_bdf = ".".join(["B", "D", "F"])
