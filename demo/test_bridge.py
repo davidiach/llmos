@@ -744,6 +744,29 @@ class KernelMetadataTests(unittest.TestCase):
         self.assertEqual(malformed_transcripts, [])
         self.assertEqual(replayed_transcripts, shipped_transcripts)
 
+    def test_recordings_match_shipped_transcript_requests(self) -> None:
+        transcripts = sorted(TRANSCRIPTS_DIR.glob("*.llmos"))
+        recordings = sorted(RECORDINGS_DIR.glob("*.txt"))
+
+        transcript_stems = [path.stem for path in transcripts]
+        recording_stems = [path.stem for path in recordings]
+        self.assertEqual(transcript_stems, recording_stems)
+
+        for transcript in transcripts:
+            recording = RECORDINGS_DIR / f"{transcript.stem}.txt"
+            with self.subTest(transcript=transcript.name, recording=recording.name):
+                transcript_requests = [
+                    line
+                    for line in transcript.read_text(encoding="utf-8").splitlines()
+                    if line and not line.startswith("#")
+                ]
+                recorded_requests = [
+                    line[2:]
+                    for line in recording.read_text(encoding="utf-8").splitlines()
+                    if line.startswith("> ")
+                ]
+                self.assertEqual(recorded_requests, transcript_requests)
+
     def test_mmio_fs_reads_restore_fs_before_helper_calls(self) -> None:
         text = KERNEL_ASM.read_text(encoding="utf-8")
 
