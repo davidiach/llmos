@@ -2186,8 +2186,10 @@ h_pci_mem_read:
     mov     cx, [pci_bar_len]
     mov     esi, [pci_mem_addr]
 .dump:
+    push    fs
     call    enable_flat_fs
     mov     al, [fs:esi]
+    pop     fs
     push    esi
     call    serial_put_hex_byte
     pop     esi
@@ -2401,20 +2403,24 @@ h_pci_mem_read_typed:
     call    serial_puts_only
 
     mov     esi, [pci_mem_addr]
+    push    fs
     call    enable_flat_fs
     cmp     word [pci_bar_len], 1
     je      .read8
     cmp     word [pci_bar_len], 2
     je      .read16
     mov     eax, [fs:esi]
+    pop     fs
     call    serial_put_hex_dword
     jmp     .done
 .read16:
     mov     ax, [fs:esi]
+    pop     fs
     call    serial_put_hex_word
     jmp     .done
 .read8:
     mov     al, [fs:esi]
+    pop     fs
     call    serial_put_hex_byte
 .done:
     call    respond_end
