@@ -563,6 +563,23 @@ class BridgeSessionTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "desynchronized"):
             session.send("help")
 
+    def test_send_rejects_non_ascii_response_bytes_without_logging(self) -> None:
+        session = object.__new__(bridge.LlmosSession)
+        session.proc = SimpleNamespace(stdin=io.BytesIO())
+        session._stdout_queue = queue.Queue()
+        session._sync_lost = False
+        session.log = [("previous", "ok prior=1")]
+        for ch in b"ok \xff\n":
+            session._stdout_queue.put(bytes([ch]))
+
+        with self.assertRaisesRegex(bridge.ProtocolSyncError, "non-ASCII"):
+            session.send("help", timeout=1.0)
+
+        self.assertTrue(session._sync_lost)
+        self.assertEqual(session.log, [("previous", "ok prior=1")])
+        with self.assertRaisesRegex(RuntimeError, "desynchronized"):
+            session.send("help")
+
     def test_send_accepts_valid_response_status_lines(self) -> None:
         for response in [
             "ok",
