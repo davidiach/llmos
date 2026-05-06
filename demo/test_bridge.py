@@ -634,6 +634,20 @@ class KernelMetadataTests(unittest.TestCase):
             fs_reads,
         )
 
+    def test_segment_reads_restore_es_before_helper_calls(self) -> None:
+        text = KERNEL_ASM.read_text(encoding="utf-8")
+
+        es_reads = re.findall(
+            r"^\s*mov\s+(?:al|ax|eax),\s+\[es:bx(?:\+di)?\]\n(?P<next>^\s*\S.*)",
+            text,
+            re.MULTILINE,
+        )
+        self.assertEqual(len(es_reads), 4)
+        self.assertTrue(
+            all(re.match(r"^\s*pop\s+es\b", next_line) for next_line in es_reads),
+            es_reads,
+        )
+
 
 class BridgeModeTests(unittest.TestCase):
     def test_mode_script_preserves_exact_non_comment_lines(self) -> None:
