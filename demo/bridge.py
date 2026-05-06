@@ -192,7 +192,12 @@ class LlmosSession:
             if ch == b"\r":
                 continue
             if ch == b"\n":
-                return buf.decode("ascii", errors="replace")
+                try:
+                    return buf.decode("ascii")
+                except UnicodeDecodeError as exc:
+                    raise ProtocolSyncError(
+                        "response line contained non-ASCII bytes"
+                    ) from exc
             buf += ch
             if len(buf) > MAX_RESPONSE_LINE_BYTES:
                 raise ProtocolSyncError(
