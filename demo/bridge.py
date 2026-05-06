@@ -18,6 +18,7 @@ returning control.
 import argparse
 import os
 import queue
+import re
 import shutil
 import subprocess
 import sys
@@ -27,6 +28,14 @@ from pathlib import Path
 
 
 DEFAULT_ANTHROPIC_MODEL = "claude-opus-4-7"
+READY_BANNER_RE = re.compile(
+    r"^# llmos v[0-9][A-Za-z0-9._-]* proto=1 primitives=[0-9]+$"
+)
+
+
+def is_ready_banner(line: str) -> bool:
+    """Return true only for the llmos protocol-ready boot banner."""
+    return READY_BANNER_RE.fullmatch(line) is not None
 
 
 class LlmosSession:
@@ -149,13 +158,18 @@ class LlmosSession:
             buf += ch
 
     def _await_banner(self, timeout: float) -> str:
-        """Read lines until we see a `#`-prefixed system banner."""
+        """Read lines until we see the protocol-ready llmos boot banner."""
         deadline = time.monotonic() + timeout
+        last_line: str | None = None
         while time.monotonic() < deadline:
             line = self._readline(timeout=deadline - time.monotonic())
-            if line.startswith("#"):
+            if is_ready_banner(line):
                 return line
-        raise TimeoutError("llmos never produced a ready banner")
+            last_line = line
+        message = "llmos never produced a ready banner"
+        if last_line is not None:
+            message += f" (last line: {last_line!r})"
+        raise TimeoutError(message)
 
     def send(self, cmd: str, timeout: float = 2.0) -> str:
         """Send one command, return its single-line response."""
