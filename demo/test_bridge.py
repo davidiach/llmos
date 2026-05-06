@@ -24,6 +24,14 @@ import demo.bridge as bridge
 
 
 class BridgeHelperTests(unittest.TestCase):
+    def test_is_ready_banner_accepts_llmos_protocol_banner(self) -> None:
+        self.assertTrue(bridge.is_ready_banner("# llmos v0.1 proto=1 primitives=29"))
+
+    def test_is_ready_banner_rejects_other_system_lines(self) -> None:
+        self.assertFalse(bridge.is_ready_banner("# warming up serial"))
+        self.assertFalse(bridge.is_ready_banner("# llmos v0.1 proto=2 primitives=29"))
+        self.assertFalse(bridge.is_ready_banner("llmos v0.1 proto=1 primitives=29"))
+
     def test_command_for_log_keeps_printable_ascii(self) -> None:
         self.assertEqual(bridge.command_for_log("help x=1"), "help x=1")
 
@@ -159,6 +167,33 @@ class ClientRaising:
 
     def create(self, **kwargs):
         raise self._exc
+
+
+class BridgeSessionTests(unittest.TestCase):
+    def test_await_banner_ignores_non_ready_system_lines(self) -> None:
+        session = object.__new__(bridge.LlmosSession)
+        lines = iter(
+            [
+                "# serial diagnostics",
+                "boot chatter",
+                "# llmos v0.1 proto=1 primitives=29",
+            ]
+        )
+        session._readline = lambda timeout: next(lines)
+
+        self.assertEqual(
+            session._await_banner(1.0),
+            "# llmos v0.1 proto=1 primitives=29",
+        )
+
+    def test_await_banner_times_out_on_invalid_banner(self) -> None:
+        session = object.__new__(bridge.LlmosSession)
+        session._readline = lambda timeout: "# llmos v0.1 proto=2 primitives=29"
+        times = iter([0.0, 0.0, 0.0])
+
+        with patch("demo.bridge.time.monotonic", side_effect=lambda: next(times, 10.0)):
+            with self.assertRaisesRegex(TimeoutError, "proto=2"):
+                session._await_banner(1.0)
 
 
 class BridgeModeTests(unittest.TestCase):

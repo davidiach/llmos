@@ -103,8 +103,10 @@ On reset, the kernel sets up serial and emits:
 # llmos v0.1 proto=1 primitives=29
 ```
 
-A bridge MUST wait for a line whose first character is `#` before sending
-any command. The banner acts as a readiness signal.
+A bridge MUST wait for this ready banner shape before sending any command:
+`# llmos VERSION proto=1 primitives=N`. Other `#`-prefixed system lines are
+not readiness signals. The banner acts as both a protocol version declaration
+and a startup synchronization point.
 
 ## One transaction per request
 
