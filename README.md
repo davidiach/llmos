@@ -458,6 +458,20 @@ docs/
 
 ## Limitations and honest caveats
 
+### Hardware and execution target
+
+llmos targets the legacy x86 PC/AT boot environment: BIOS loads the MBR at
+`0000:7c00`, starts one 16-bit real-mode CPU, and provides the conventional
+BIOS data areas and services that the demo inspects. The supported harness is
+QEMU via `qemu-system-i386` and COM1 serial I/O; real hardware is outside the
+tested production envelope.
+
+The code assumes CPUID is available, legacy PCI config I/O ports exist where
+PCI primitives are used, and the firmware behaves like a PC-compatible BIOS.
+It does not handle UEFI-only boot, multiprocessor startup, protected-mode
+drivers, ACPI discovery, arbitrary chipsets, DMA safety, interrupts, storage
+stacks, or recovery paths expected of a production OS.
+
 - Single CPU, real mode only. PC/AT-compatible BIOS required. UEFI-only
   machines will refuse to boot it.
 - `mem.read` reaches only the first 64 KB (segment 0 offset). `mem.read.seg`
