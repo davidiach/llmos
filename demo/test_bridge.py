@@ -10,6 +10,7 @@ from __future__ import annotations
 import contextlib
 import io
 import os
+import re
 import sys
 import tempfile
 import unittest
@@ -21,6 +22,9 @@ if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import demo.bridge as bridge
+
+
+KERNEL_ASM = Path(__file__).resolve().parents[1] / "src" / "kernel.asm"
 
 
 class BridgeHelperTests(unittest.TestCase):
@@ -194,6 +198,63 @@ class BridgeSessionTests(unittest.TestCase):
         with patch("demo.bridge.time.monotonic", side_effect=lambda: next(times, 10.0)):
             with self.assertRaisesRegex(TimeoutError, "proto=2"):
                 session._await_banner(1.0)
+
+
+class KernelMetadataTests(unittest.TestCase):
+    def test_command_tables_match_protocol_metadata(self) -> None:
+        text = KERNEL_ASM.read_text(encoding="utf-8")
+
+        cmd_table = re.search(
+            r"^cmd_table:\n(?P<body>.*?)^\s*dw\s+0\b",
+            text,
+            re.MULTILINE | re.DOTALL,
+        )
+        self.assertIsNotNone(cmd_table)
+        cmd_labels = re.findall(
+            r"^\s*dw\s+(cmd_[A-Za-z0-9_]+),\s+h_[A-Za-z0-9_]+",
+            cmd_table.group("body"),
+            re.MULTILINE,
+        )
+
+        command_defs = dict(
+            re.findall(
+                r"^(cmd_[A-Za-z0-9_]+):\s+db\s+'([^']+)',\s*0",
+                text,
+                re.MULTILINE,
+            )
+        )
+        missing_commands = [label for label in cmd_labels if label not in command_defs]
+        self.assertEqual(missing_commands, [])
+        commands = [command_defs[label] for label in cmd_labels]
+
+        schema_table = re.search(
+            r"^schema_table:\n(?P<body>.*?)^\s*dw\s+0\b",
+            text,
+            re.MULTILINE | re.DOTALL,
+        )
+        self.assertIsNotNone(schema_table)
+        schema_labels = re.findall(
+            r"^\s*dw\s+(cmd_[A-Za-z0-9_]+),\s+sch_[A-Za-z0-9_]+",
+            schema_table.group("body"),
+            re.MULTILINE,
+        )
+        self.assertEqual(schema_labels, cmd_labels)
+
+        ready_msg = re.search(
+            r"^ready_msg:\s+db '# llmos [^']* primitives=([0-9]+)'",
+            text,
+            re.MULTILINE,
+        )
+        self.assertIsNotNone(ready_msg)
+        self.assertEqual(int(ready_msg.group(1)), len(commands))
+
+        help_response = re.search(
+            r"^help_response:\n\s+db 'ok primitives=([^']+)', 0",
+            text,
+            re.MULTILINE,
+        )
+        self.assertIsNotNone(help_response)
+        self.assertEqual(help_response.group(1).split(","), commands)
 
 
 class BridgeModeTests(unittest.TestCase):
