@@ -28,9 +28,14 @@ from pathlib import Path
 
 
 DEFAULT_ANTHROPIC_MODEL = "claude-opus-4-7"
+MAX_RESPONSE_LINE_BYTES = 64 * 1024
 READY_BANNER_RE = re.compile(
     r"^# llmos v[0-9][A-Za-z0-9._-]* proto=1 primitives=[0-9]+$"
 )
+
+
+class ProtocolSyncError(RuntimeError):
+    """Raised when the serial stream violates the line-oriented protocol."""
 
 
 def is_ready_banner(line: str) -> bool:
@@ -77,7 +82,9 @@ class LlmosSession:
                 or self.proc.stderr is None
             ):
                 raise RuntimeError("failed to open llmos stdio pipes")
-            self._stdout_queue: queue.Queue[bytes | None] = queue.Queue()
+            self._stdout_queue: queue.Queue[bytes | None | ProtocolSyncError] = (
+                queue.Queue()
+            )
             self._stdout_thread = threading.Thread(
                 target=self._pump_stdout,
                 name="llmos-stdout",
@@ -108,11 +115,26 @@ class LlmosSession:
     def _pump_stdout(self) -> None:
         """Read bytes from QEMU on a worker thread so timeouts stay enforceable."""
         assert self.proc.stdout is not None
+        line_len = 0
         try:
             while True:
                 ch = self.proc.stdout.read(1)
                 if not ch:
                     break
+                if ch == b"\r":
+                    continue
+                if ch == b"\n":
+                    line_len = 0
+                else:
+                    line_len += 1
+                    if line_len > MAX_RESPONSE_LINE_BYTES:
+                        self._stdout_queue.put(
+                            ProtocolSyncError(
+                                "response line exceeded "
+                                f"{MAX_RESPONSE_LINE_BYTES} bytes"
+                            )
+                        )
+                        return
                 self._stdout_queue.put(ch)
         except OSError:
             pass
@@ -140,7 +162,7 @@ class LlmosSession:
         return data.decode("utf-8", errors="replace").strip()
 
     def _readline(self, timeout: float = 2.0) -> str:
-        """Read one \\r\\n-terminated line from the kernel, with a deadline."""
+        """Read one \\r\\n-terminated line from the kernel, with a deadline and cap."""
         deadline = time.monotonic() + timeout
         buf = bytearray()
         while True:
@@ -151,6 +173,8 @@ class LlmosSession:
                 ch = self._stdout_queue.get(timeout=remaining)
             except queue.Empty as exc:
                 raise TimeoutError(f"no response within {timeout}s (partial: {buf!r})") from exc
+            if isinstance(ch, ProtocolSyncError):
+                raise ch
             if ch is None:
                 raise EOFError(
                     f"llmos exited before completing a line (partial: {buf!r})"
@@ -160,6 +184,10 @@ class LlmosSession:
             if ch == b"\n":
                 return buf.decode("ascii", errors="replace")
             buf += ch
+            if len(buf) > MAX_RESPONSE_LINE_BYTES:
+                raise ProtocolSyncError(
+                    f"response line exceeded {MAX_RESPONSE_LINE_BYTES} bytes"
+                )
 
     def _await_banner(self, timeout: float) -> str:
         """Read lines until we see the protocol-ready llmos boot banner."""
@@ -196,7 +224,7 @@ class LlmosSession:
             raise EOFError("llmos stdin closed while sending command") from exc
         try:
             resp = self._readline(timeout=timeout)
-        except (EOFError, TimeoutError):
+        except (EOFError, TimeoutError, ProtocolSyncError):
             self._sync_lost = True
             raise
         self.log.append((cmd, resp))
