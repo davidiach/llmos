@@ -188,7 +188,7 @@ The 16- and 32-bit forms require natural alignment.
 
 - `nasm`
 - `qemu-system-i386`
-- `make`, `dd`, `timeout`
+- `make`, `dd`, `sed`, `timeout`
 - `python3` (for the bridge)
 - `pip install anthropic` (only if you want Claude to drive)
 
