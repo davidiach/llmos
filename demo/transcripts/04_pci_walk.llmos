@@ -5,7 +5,7 @@
 #
 # The model doesn't know the primitive list yet. It asks `help`, notices
 # `pci.scan`, asks for the schema (to learn how to read the records), then
-# scans the bus. The response is a CSV of fixed-width B.D.F:VVVV:DDDD:CC
+# scans the bus. The response is a CSV of fixed-width BB.DD.F:VVVV:DDDD:CC
 # records — everything the model needs to name the devices from first
 # principles using only the vendor id and the PCI base-class byte.
 # =============================================================================
@@ -23,7 +23,7 @@ describe pci.scan
 # format will carry bus 01+ once a bridge is attached.
 pci.scan
 
-# The record format is B.D.F:VVVV:DDDD:CC — bus.device.function, vendor id,
+# The record format is BB.DD.F:VVVV:DDDD:CC — bus.device.function, vendor id,
 # device id, base class byte. Vendor 8086 is Intel; vendor 1234 is QEMU's
 # synthetic "std-vga" vendor. The class byte is the interesting part — it
 # names the *kind* of device independent of who made it:

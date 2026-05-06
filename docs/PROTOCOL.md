@@ -231,7 +231,7 @@ covers the full reachable tree, in bus-ascending order. Each populated
 function contributes one record:
 
 ```
-ok devices=B.D.F:VVVV:DDDD:CC[,B.D.F:VVVV:DDDD:CC ...]
+ok devices=BB.DD.F:VVVV:DDDD:CC[,BB.DD.F:VVVV:DDDD:CC ...]
 ```
 
 Fields, all lowercase hex, fixed-width:

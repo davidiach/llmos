@@ -50,7 +50,7 @@
 > describe io.in
 < ok name=io.in args="port=H" returns="port=H value=H" allowlist=0x20,0x21,0x40,0x43,0x60,0x61,0x64,0x70,0x71,0x3f8,0x3f9,0x3fa,0x3fb,0x3fc,0x3fd,0x3fe,0x3ff
 > describe pci.scan
-< ok name=pci.scan args=none returns="devices=B.D.F:VVVV:DDDD:CC[,...]" scope="bus 0 + any PCI-to-PCI bridges reachable from it; class = base class byte"
+< ok name=pci.scan args=none returns="devices=BB.DD.F:VVVV:DDDD:CC[,...]" scope="bus 0 + any PCI-to-PCI bridges reachable from it; class = base class byte"
 > describe pci.config.read
 < ok name=pci.config.read args="bdf=BB.DD.F offset=H(0-ff) len=N(1-16)" returns="bdf=BB.DD.F offset=H len=N data=HEX" notes="reads PCI config-space bytes; absent functions return unavailable"
 > describe pci.config.read8

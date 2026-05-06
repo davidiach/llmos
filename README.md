@@ -85,7 +85,7 @@ See `docs/PROTOCOL.md` for the full wire spec.
 | `rtc.now`          | none                        | `iso=YYYY-MM-DDTHH:MM:SS`                       |
 | `ticks.since_boot` | none                        | `ms=N`                                          |
 | `io.in`            | `port=H`                    | `port=H value=H` or `err code=denied`           |
-| `pci.scan`         | none                        | `devices=B.D.F:VVVV:DDDD:CC[,...]` (bus 0 + bridges) |
+| `pci.scan`         | none                        | `devices=BB.DD.F:VVVV:DDDD:CC[,...]` (bus 0 + bridges) |
 | `pci.config.read`  | `bdf=BB.DD.F offset=H len=N(1-16)` | `bdf=BB.DD.F offset=H len=N data=HEX` |
 | `pci.config.read8` | `bdf=BB.DD.F offset=H`      | `bdf=BB.DD.F offset=H width=8 value=HH`         |
 | `pci.config.read16` | `bdf=BB.DD.F offset=H(aligned)` | `bdf=BB.DD.F offset=H width=16 value=HHHH` |
@@ -276,7 +276,7 @@ Transcript: `demo/transcripts/03_denied_path.llmos`.
 
 **Beat 4 — PCI walk.** Task: *figure out what hardware is on the bus*.
 Claude asks `help`, spots `pci.scan`, reads its schema to learn the
-`B.D.F:VVVV:DDDD:CC` record shape, and scans bus 0. One line of output
+`BB.DD.F:VVVV:DDDD:CC` record shape, and scans bus 0. One line of output
 names every populated function — host bridge, south bridge, IDE, display,
 network — by vendor id and PCI base class. The IDE controller denied at
 the port layer in beat 3 shows up here as a device: bus view and port
