@@ -520,6 +520,45 @@ class BridgeSessionTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "desynchronized"):
             session.send("help")
 
+    def test_send_accepts_valid_response_status_lines(self) -> None:
+        for response in [
+            "ok",
+            "ok primitives=help,describe",
+            "err",
+            'err code=bad_arg detail="usage: help"',
+        ]:
+            with self.subTest(response=response):
+                session = object.__new__(bridge.LlmosSession)
+                session.proc = SimpleNamespace(stdin=io.BytesIO())
+                session._sync_lost = False
+                session.log = []
+
+                with patch.object(session, "_readline", return_value=response):
+                    self.assertEqual(session.send("help"), response)
+
+                self.assertFalse(session._sync_lost)
+                self.assertEqual(session.log, [("help", response)])
+
+    def test_send_rejects_chatter_response_lines_without_logging(self) -> None:
+        for response in ["# stray", "boot chatter"]:
+            with self.subTest(response=response):
+                session = object.__new__(bridge.LlmosSession)
+                session.proc = SimpleNamespace(stdin=io.BytesIO())
+                session._sync_lost = False
+                session.log = [("previous", "ok prior=1")]
+
+                with patch.object(session, "_readline", return_value=response):
+                    with self.assertRaisesRegex(
+                        bridge.ProtocolSyncError,
+                        "unexpected response line",
+                    ):
+                        session.send("help")
+
+                self.assertTrue(session._sync_lost)
+                self.assertEqual(session.log, [("previous", "ok prior=1")])
+                with self.assertRaisesRegex(RuntimeError, "desynchronized"):
+                    session.send("help")
+
     def test_await_banner_ignores_non_ready_system_lines(self) -> None:
         session = object.__new__(bridge.LlmosSession)
         lines = iter(
