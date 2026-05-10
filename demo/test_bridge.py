@@ -29,6 +29,7 @@ import demo.bridge as bridge
 KERNEL_ASM = Path(__file__).resolve().parents[1] / "src" / "kernel.asm"
 README_MD = Path(__file__).resolve().parents[1] / "README.md"
 PROTOCOL_MD = Path(__file__).resolve().parents[1] / "docs" / "PROTOCOL.md"
+DEMO_MD = Path(__file__).resolve().parents[1] / "docs" / "DEMO.md"
 RECORDINGS_DIR = Path(__file__).resolve().parent / "recordings"
 TRANSCRIPTS_DIR = Path(__file__).resolve().parent / "transcripts"
 CI_SMOKE_SH = Path(__file__).resolve().parent / "ci_smoke.sh"
@@ -167,36 +168,36 @@ def extract_kernel_protocol_metadata() -> KernelProtocolMetadata:
     )
 
 
-def extract_readme_primitive_commands() -> list[str]:
-    text = README_MD.read_text(encoding="utf-8")
+def extract_demo_transcript_stems() -> list[str]:
+    text = DEMO_MD.read_text(encoding="utf-8")
+    return re.findall(
+        r"^\| [0-9]+ \| `"
+        r"([0-9]{2}_[a-z0-9]+(?:_[a-z0-9]+)*)\.llmos` \|",
+        text,
+        re.MULTILINE,
+    )
+
+
+def extract_protocol_primitive_commands() -> list[str]:
+    text = PROTOCOL_MD.read_text(encoding="utf-8")
     table = re.search(
-        r"^## Primitives \(v0\.1\)\n\n(?P<table>(?:\|.*\n)+)",
+        r"^## Primitive index\n\n(?P<table>(?:\|.*\n)+)",
         text,
         re.MULTILINE,
     )
     if table is None:
-        raise AssertionError("missing README primitive table")
+        raise AssertionError("missing protocol primitive index")
 
     commands: list[str] = []
     for line in table.group("table").splitlines()[2:]:
         cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
-        if len(cells) < 3:
-            raise AssertionError(f"malformed README primitive row: {line}")
+        if len(cells) < 2:
+            raise AssertionError(f"malformed protocol primitive row: {line}")
         command = re.fullmatch(r"`([^`]+)`", cells[0])
         if command is None:
-            raise AssertionError(f"malformed README command cell: {cells[0]}")
+            raise AssertionError(f"malformed protocol command cell: {cells[0]}")
         commands.append(command.group(1))
     return commands
-
-
-def extract_readme_demo_transcript_stems() -> list[str]:
-    text = README_MD.read_text(encoding="utf-8")
-    return re.findall(
-        r"^Transcript: `demo/transcripts/"
-        r"([0-9]{2}_[a-z0-9]+(?:_[a-z0-9]+)*)\.llmos`\.$",
-        text,
-        re.MULTILINE,
-    )
 
 
 def iter_recorded_describe_outputs() -> list[tuple[Path, int, str, str]]:
@@ -663,16 +664,20 @@ class KernelMetadataTests(unittest.TestCase):
         self.assertEqual(metadata.primitive_count, len(metadata.commands))
         self.assertEqual(metadata.help_primitives, metadata.commands)
 
-    def test_readme_protocol_examples_match_kernel_metadata(self) -> None:
+    def test_readme_protocol_summary_matches_kernel_metadata(self) -> None:
         metadata = extract_kernel_protocol_metadata()
         readme = README_MD.read_text(encoding="utf-8")
 
+        self.assertIn(metadata.ready_banner, readme)
         self.assertIn(
-            f"{metadata.ready_banner}\n> help\n"
-            f"< ok primitives={','.join(metadata.commands)}",
+            f"The v0.1 kernel exposes {metadata.primitive_count} primitives:",
             readme,
         )
-        self.assertEqual(extract_readme_primitive_commands(), metadata.commands)
+        self.assertIn("[docs/PROTOCOL.md](docs/PROTOCOL.md)", readme)
+
+    def test_protocol_primitive_index_matches_kernel_metadata(self) -> None:
+        metadata = extract_kernel_protocol_metadata()
+        self.assertEqual(extract_protocol_primitive_commands(), metadata.commands)
 
     def test_protocol_boot_banner_matches_kernel_metadata(self) -> None:
         metadata = extract_kernel_protocol_metadata()
@@ -709,8 +714,8 @@ class KernelMetadataTests(unittest.TestCase):
                 self.assertIn(primitive, metadata.schema_by_command)
                 self.assertEqual(actual, metadata.schema_by_command[primitive])
 
-    def test_readme_demo_beats_match_shipped_transcripts(self) -> None:
-        documented_transcripts = extract_readme_demo_transcript_stems()
+    def test_demo_guide_beats_match_shipped_transcripts(self) -> None:
+        documented_transcripts = extract_demo_transcript_stems()
         shipped_transcripts = [
             path.stem for path in sorted(TRANSCRIPTS_DIR.glob("*.llmos"))
         ]
@@ -721,6 +726,7 @@ class KernelMetadataTests(unittest.TestCase):
         protocol_files = [
             README_MD,
             PROTOCOL_MD,
+            DEMO_MD,
             KERNEL_ASM,
             *sorted(RECORDINGS_DIR.glob("*.txt")),
             *sorted(TRANSCRIPTS_DIR.glob("*.llmos")),

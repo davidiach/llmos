@@ -108,6 +108,40 @@ A bridge MUST wait for this ready banner shape before sending any command:
 not readiness signals. The banner acts as both a protocol version declaration
 and a startup synchronization point.
 
+## Primitive index
+
+| Command | Summary |
+| ------- | ------- |
+| `help` | list primitive names |
+| `describe` | describe one primitive's schema |
+| `cpu.vendor` | report CPUID vendor/family/model/stepping |
+| `cpu.features` | report decoded CPUID feature flags |
+| `mem.query` | report conventional and extended BIOS memory sizes |
+| `mem.read` | read bounded segment-0 bytes |
+| `mem.read8` | read one 8-bit segment-0 value |
+| `mem.read16` | read one aligned 16-bit segment-0 value |
+| `mem.read32` | read one aligned 32-bit segment-0 value |
+| `mem.read.seg` | read bounded bytes from an explicit real-mode segment |
+| `mem.read.seg8` | read one 8-bit explicit-segment value |
+| `mem.read.seg16` | read one aligned 16-bit explicit-segment value |
+| `mem.read.seg32` | read one aligned 32-bit explicit-segment value |
+| `rtc.now` | report the current RTC timestamp |
+| `ticks.since_boot` | report BIOS-tick-derived milliseconds since boot |
+| `io.in` | read one allowlisted I/O port |
+| `pci.scan` | enumerate reachable PCI functions |
+| `pci.config.read` | read bounded PCI config-space bytes |
+| `pci.config.read8` | read one 8-bit PCI config-space value |
+| `pci.config.read16` | read one aligned 16-bit PCI config-space value |
+| `pci.config.read32` | read one aligned 32-bit PCI config-space value |
+| `pci.cap.list` | list conventional PCI capabilities |
+| `pci.cap.read` | read bytes relative to a listed PCI capability |
+| `pci.bars` | decode Base Address Registers |
+| `pci.bar.read` | read bounded bytes from an I/O BAR |
+| `pci.mem.read` | read bounded bytes from a memory BAR |
+| `pci.mem.read8` | read one 8-bit memory BAR value |
+| `pci.mem.read16` | read one aligned 16-bit memory BAR value |
+| `pci.mem.read32` | read one aligned 32-bit memory BAR value |
+
 ## One transaction per request
 
 The kernel emits exactly one response line per request. There is no
