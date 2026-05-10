@@ -68,8 +68,8 @@ The v0.1 kernel exposes 29 primitives:
 
 - Introspection: `help`, `describe`
 - CPU and time: `cpu.vendor`, `cpu.features`, `rtc.now`, `ticks.since_boot`
-- Bounded memory reads: segment-0, explicit segment:offset, and typed
-  8/16/32-bit variants
+- Memory query and bounded reads: `mem.query`, segment-0 reads, explicit
+  segment:offset reads, and typed 8/16/32-bit variants
 - Allowlisted I/O reads through `io.in`
 - PCI discovery, config-space reads, capability traversal, BAR decoding, and
   small BAR-relative I/O/MMIO reads
