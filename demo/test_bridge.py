@@ -334,12 +334,66 @@ class BridgePreflightTests(unittest.TestCase):
                 script,
             )
 
+    def test_ai_mode_reports_missing_image_before_missing_api_key(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            missing_image = Path(tmp) / "missing.img"
+            argv = [
+                "bridge.py",
+                "--image",
+                str(missing_image),
+                "ai",
+                "task",
+            ]
+            stderr = io.StringIO()
+
+            with patch.object(sys, "argv", argv):
+                with patch.dict(os.environ, {}, clear=True):
+                    with patch("demo.bridge.make_anthropic_client") as ai_client:
+                        with contextlib.redirect_stderr(stderr):
+                            with self.assertRaises(SystemExit) as raised:
+                                bridge.main()
+
+        self.assertEqual(raised.exception.code, 2)
+        self.assertIn("image file not found", stderr.getvalue())
+        self.assertNotIn("ANTHROPIC_API_KEY", stderr.getvalue())
+        ai_client.assert_not_called()
+
+    def test_ai_mode_reports_missing_qemu_before_missing_api_key(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            image = Path(tmp) / "llmos.img"
+            image.write_bytes(b"fake")
+            argv = [
+                "bridge.py",
+                "--image",
+                str(image),
+                "--qemu",
+                "llmos-definitely-missing-qemu",
+                "ai",
+                "task",
+            ]
+            stderr = io.StringIO()
+
+            with patch.object(sys, "argv", argv):
+                with patch.dict(os.environ, {}, clear=True):
+                    with patch("demo.bridge.make_anthropic_client") as ai_client:
+                        with patch("demo.bridge.LlmosSession") as llmos_session:
+                            with contextlib.redirect_stderr(stderr):
+                                with self.assertRaises(SystemExit) as raised:
+                                    bridge.main()
+
+        self.assertEqual(raised.exception.code, 2)
+        self.assertIn("qemu executable not found", stderr.getvalue())
+        self.assertNotIn("ANTHROPIC_API_KEY", stderr.getvalue())
+        ai_client.assert_not_called()
+        llmos_session.assert_not_called()
+
     def test_make_anthropic_client_requires_api_key_before_import(self) -> None:
         with patch.dict(os.environ, {}, clear=True):
             self.assert_exits_2_with_stderr(
                 bridge.make_anthropic_client,
                 "set ANTHROPIC_API_KEY",
             )
+
 
 class FakeSession:
     banner = "# llmos test proto=1"
