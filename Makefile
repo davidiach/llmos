@@ -48,7 +48,7 @@ $(BOOT_BIN): $(SRC_DIR)/boot.asm $(SECTOR_CHECK) | $(BUILD_DIR)
 	    echo "error: boot.bin must be exactly 512 bytes (got $$sz)"; exit 1; \
 	  fi
 
-$(KERNEL_BIN): $(SRC_DIR)/kernel.asm | $(BUILD_DIR)
+$(KERNEL_BIN): $(SRC_DIR)/kernel.asm Makefile | $(BUILD_DIR)
 	$(AS) -f bin $< -o $@
 	@sz=$$(wc -c < $@); \
 	  max=$(MAX_KERNEL_BYTES); \
@@ -57,7 +57,7 @@ $(KERNEL_BIN): $(SRC_DIR)/kernel.asm | $(BUILD_DIR)
 	    exit 1; \
 	  fi
 
-$(IMG): $(BOOT_BIN) $(KERNEL_BIN)
+$(IMG): $(BOOT_BIN) $(KERNEL_BIN) Makefile
 	@dd if=/dev/zero of=$@ bs=512 count=2880 status=none
 	@dd if=$(BOOT_BIN)   of=$@ conv=notrunc               status=none
 	@dd if=$(KERNEL_BIN) of=$@ conv=notrunc bs=512 seek=1 status=none
