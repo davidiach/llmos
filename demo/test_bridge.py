@@ -45,6 +45,7 @@ class KernelProtocolMetadata(NamedTuple):
     help_primitives: list[str]
     io_allowlist: list[int]
     io_schema_allowlist: list[int]
+    schema_entries: list[tuple[str, str]]
     schema_by_command: dict[str, str]
 
 
@@ -101,10 +102,11 @@ def extract_kernel_protocol_metadata() -> KernelProtocolMetadata:
     ]
     if missing_schemas:
         raise AssertionError(f"missing schema definitions: {missing_schemas}")
-    schema_by_command = {
-        command_defs[cmd_label]: schema_defs[schema_label]
+    schema_entries = [
+        (command_defs[cmd_label], schema_defs[schema_label])
         for cmd_label, schema_label in schema_table_entries
-    }
+    ]
+    schema_by_command = dict(schema_entries)
 
     ready_msg = re.search(
         r"^ready_msg:\s+db '([^']+)',\s*13,\s*10,\s*0",
@@ -164,6 +166,7 @@ def extract_kernel_protocol_metadata() -> KernelProtocolMetadata:
         help_primitives=help_primitives,
         io_allowlist=compiled_ports,
         io_schema_allowlist=schema_ports,
+        schema_entries=schema_entries,
         schema_by_command=schema_by_command,
     )
 
@@ -668,6 +671,13 @@ class KernelMetadataTests(unittest.TestCase):
         self.assertEqual(metadata.schema_labels, metadata.cmd_labels)
         self.assertEqual(metadata.primitive_count, len(metadata.commands))
         self.assertEqual(metadata.help_primitives, metadata.commands)
+
+    def test_schema_names_match_registered_commands(self) -> None:
+        metadata = extract_kernel_protocol_metadata()
+
+        for command, schema in metadata.schema_entries:
+            with self.subTest(command=command):
+                self.assertRegex(schema, rf"^ok name={re.escape(command)}(?:\s|$)")
 
     def test_readme_protocol_summary_matches_kernel_metadata(self) -> None:
         metadata = extract_kernel_protocol_metadata()
