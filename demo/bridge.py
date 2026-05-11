@@ -319,6 +319,9 @@ def mode_repl(session: LlmosSession) -> int:
         except TimeoutError as e:
             print(f"[bridge] timeout: {e}", file=sys.stderr)
             return 1
+        except ProtocolSyncError as e:
+            print(f"[bridge] protocol desynchronized: {e}", file=sys.stderr)
+            return 1
         except (EOFError, RuntimeError) as e:
             print(f"[bridge] disconnected: {e}", file=sys.stderr)
             return 1
@@ -347,6 +350,9 @@ def mode_script(
             return 1
         except TimeoutError as e:
             print(f"# timeout: {e}")
+            return 1
+        except ProtocolSyncError as e:
+            print(f"# protocol desynchronized: {e}")
             return 1
         except (EOFError, RuntimeError) as e:
             print(f"# disconnected: {e}")
@@ -475,6 +481,9 @@ def mode_ai(
             kernel_resp = f"err code=timeout detail=\"{e}\""
             print(f"< {kernel_resp}")
             print("# session desynchronized after timeout")
+            return 1
+        except ProtocolSyncError as e:
+            print(f"# protocol desynchronized: {e}")
             return 1
         except (EOFError, RuntimeError) as e:
             print(f"# disconnected: {e}")

@@ -338,7 +338,6 @@ class BridgePreflightTests(unittest.TestCase):
                 "set ANTHROPIC_API_KEY",
             )
 
-
 class FakeSession:
     banner = "# llmos test proto=1"
 
@@ -349,6 +348,12 @@ class FakeSession:
     def send(self, cmd: str) -> str:
         self.commands.append(cmd)
         return self.response
+
+
+class ProtocolErrorSession(FakeSession):
+    def send(self, cmd: str) -> str:
+        self.commands.append(cmd)
+        raise bridge.ProtocolSyncError("unexpected response line: '# stray'")
 
 
 class TextBlock:
@@ -820,6 +825,21 @@ class KernelMetadataTests(unittest.TestCase):
 
 
 class BridgeModeTests(unittest.TestCase):
+    def test_mode_repl_reports_protocol_sync_error(self) -> None:
+        session = ProtocolErrorSession()
+        out = io.StringIO()
+        err = io.StringIO()
+        with patch("builtins.input", return_value="help"):
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                rc = bridge.mode_repl(session)
+
+        self.assertEqual(rc, 1)
+        self.assertEqual(session.commands, ["help"])
+        self.assertIn(
+            "[bridge] protocol desynchronized: unexpected response line",
+            err.getvalue(),
+        )
+
     def test_mode_script_preserves_exact_non_comment_lines(self) -> None:
         session = FakeSession()
         out = io.StringIO()
@@ -844,6 +864,20 @@ class BridgeModeTests(unittest.TestCase):
         self.assertEqual(rc, 1)
         self.assertIn("# invalid command: bad script command", out.getvalue())
 
+    def test_mode_script_reports_protocol_sync_error(self) -> None:
+        session = ProtocolErrorSession()
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            rc = bridge.mode_script(session, Path("unused.llmos"), lines=["help"])
+
+        self.assertEqual(rc, 1)
+        self.assertEqual(session.commands, ["help"])
+        self.assertIn("> help", out.getvalue())
+        self.assertIn(
+            "# protocol desynchronized: unexpected response line",
+            out.getvalue(),
+        )
+
     def test_mode_ai_reports_client_failure(self) -> None:
         out = io.StringIO()
         with contextlib.redirect_stdout(out):
@@ -861,6 +895,25 @@ class BridgeModeTests(unittest.TestCase):
             rc = bridge.mode_ai(FakeSession(), "task", client=ClientReturning(" \n\t "))
         self.assertEqual(rc, 1)
         self.assertIn("# ai error: empty command", out.getvalue())
+
+    def test_mode_ai_reports_protocol_sync_error(self) -> None:
+        session = ProtocolErrorSession()
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            rc = bridge.mode_ai(
+                session,
+                "task",
+                step_limit=1,
+                client=ClientReturning("help"),
+            )
+
+        self.assertEqual(rc, 1)
+        self.assertEqual(session.commands, ["help"])
+        self.assertIn("> help", out.getvalue())
+        self.assertIn(
+            "# protocol desynchronized: unexpected response line",
+            out.getvalue(),
+        )
 
     def test_mode_ai_reports_wrapped_command(self) -> None:
         session = FakeSession()
