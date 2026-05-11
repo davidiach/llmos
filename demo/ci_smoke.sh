@@ -4,7 +4,20 @@ set -euo pipefail
 # verify each one produces the markers that make it that beat.
 # The banner check is common to all; the rest is beat-specific.
 SMOKE_TMPDIR=$(mktemp -d "${TMPDIR:-/tmp}/llmos-ci-smoke.XXXXXX")
+SMOKE_GROUP_OPEN=0
+end_smoke_group() {
+  if [ "${SMOKE_GROUP_OPEN}" -eq 1 ]; then
+    printf "%s\n" "::endgroup::"
+    SMOKE_GROUP_OPEN=0
+  fi
+}
+begin_smoke_group() {
+  end_smoke_group
+  printf "%s\n" "::group::smoke: $1"
+  SMOKE_GROUP_OPEN=1
+}
 cleanup() {
+  end_smoke_group
   rm -rf "${SMOKE_TMPDIR}"
 }
 trap cleanup EXIT
@@ -12,13 +25,13 @@ trap cleanup EXIT
 run_transcript() {
   local name="$1"
   local out="${SMOKE_TMPDIR}/${name}.txt"
-  echo "::group::smoke: ${name}"
+  begin_smoke_group "${name}"
   timeout 30 python3 demo/bridge.py \
     --image build/llmos.img \
     script "demo/transcripts/${name}.llmos" \
     | tee "${out}"
   grep -q "^# llmos v0.1 proto=1 primitives=" "${out}"
-  echo "::endgroup::"
+  end_smoke_group
 }
 
 run_transcript 01_cold_discovery
@@ -59,7 +72,7 @@ grep -q "^< ok ms=[0-9]\+" "${SMOKE_TMPDIR}/02_hardware_archaeology.txt"
 cat > "${SMOKE_TMPDIR}/cpu_model_probe.llmos" <<'EOF'
 cpu.vendor
 EOF
-echo "::group::smoke: cpuid-display-model"
+begin_smoke_group "cpuid-display-model"
 timeout 30 python3 demo/bridge.py \
   --image build/llmos.img \
   --qemu-arg=-cpu \
@@ -67,7 +80,7 @@ timeout 30 python3 demo/bridge.py \
   script "${SMOKE_TMPDIR}/cpu_model_probe.llmos" \
   | tee "${SMOKE_TMPDIR}/cpu_model_probe.txt"
 grep -q "^< ok vendor=GenuineIntel family=6 model=60 stepping=" "${SMOKE_TMPDIR}/cpu_model_probe.txt"
-echo "::endgroup::"
+end_smoke_group
 
 run_transcript 03_denied_path
 # Beat 3: denial as an interface element - at least one io.in call
@@ -251,7 +264,7 @@ run_transcript 16_line_length
 # Beat 16: request lines longer than the kernel input buffer must
 # fail as malformed instead of executing a truncated prefix.
 grep -q '^< err code=bad_arg detail="request line too long"' "${SMOKE_TMPDIR}/16_line_length.txt"
-echo "::group::smoke: raw-control-byte"
+begin_smoke_group "raw-control-byte"
 python3 - <<'PY'
 from pathlib import Path
 
@@ -269,8 +282,8 @@ for payload in (b"help\x00 unexpected=1\r\n", b"help unexpected=1\x08\r\n"):
     finally:
         session.close()
 PY
-echo "::endgroup::"
-echo "::group::smoke: raw-cr-stripping"
+end_smoke_group
+begin_smoke_group "raw-cr-stripping"
 python3 - <<'PY'
 from pathlib import Path
 
@@ -286,7 +299,7 @@ try:
 finally:
     session.close()
 PY
-echo "::endgroup::"
+end_smoke_group
 
 run_transcript 17_no_arg_validation
 # Beat 17: args=none primitives must reject unexpected arguments.
@@ -336,7 +349,7 @@ pci.scan
 pci.cap.list bdf=00.04.0
 pci.config.read bdf=00.04.0 offset=34 len=4
 EOF
-echo "::group::smoke: pci-cap-list"
+begin_smoke_group "pci-cap-list"
 timeout 30 python3 demo/bridge.py \
   --image build/llmos.img \
   --qemu-arg=-device \
@@ -359,7 +372,7 @@ timeout 30 python3 demo/bridge.py \
   script "${SMOKE_TMPDIR}/pci_cap_read_probe.llmos" \
   | tee "${SMOKE_TMPDIR}/pci_cap_read_probe.txt"
 grep -q "^< ok bdf=00\.04\.0 cap=${cap} id=[0-9a-f]\{2\} offset=00 len=4 data=[0-9a-f]\{8\}" "${SMOKE_TMPDIR}/pci_cap_read_probe.txt"
-echo "::endgroup::"
+end_smoke_group
 
 # Bridge-following regression: boot QEMU with an explicit PCI bridge
 # plus an e1000 behind it. pci.scan must reach bus 01, pci.bars on
@@ -377,7 +390,7 @@ pci.bars bdf=01.02.0
 pci.mem.read bdf=01.02.0 bar=0 offset=0 len=4
 pci.mem.read32 bdf=01.02.0 bar=0 offset=0
 EOF
-echo "::group::smoke: pci-bridge-follow"
+begin_smoke_group "pci-bridge-follow"
 timeout 30 python3 demo/bridge.py \
   --image build/llmos.img \
   --qemu-arg=-device \
@@ -405,4 +418,4 @@ grep -q "^< ok bdf=01\.02\.0 bars=0:m32:[0-9a-f]\{8\}:n" "${SMOKE_TMPDIR}/pci_br
 # And pci.mem.read must be able to read that downstream MMIO BAR.
 grep -q "^< ok bdf=01\.02\.0 bar=0 kind=m32 addr=[0-9a-f]\{8\} offset=0000 len=4 data=[0-9a-f]\{8\}" "${SMOKE_TMPDIR}/pci_bridge_probe.txt"
 grep -q "^< ok bdf=01\.02\.0 bar=0 kind=m32 addr=[0-9a-f]\{8\} offset=0000 width=32 value=[0-9a-f]\{8\}" "${SMOKE_TMPDIR}/pci_bridge_probe.txt"
-echo "::endgroup::"
+end_smoke_group

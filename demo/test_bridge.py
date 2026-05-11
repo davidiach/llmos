@@ -836,6 +836,51 @@ class KernelMetadataTests(unittest.TestCase):
         self.assertEqual(malformed_transcripts, [])
         self.assertEqual(replayed_transcripts, shipped_transcripts)
 
+    def test_ci_smoke_action_groups_are_failure_safe(self) -> None:
+        text = CI_SMOKE_SH.read_text(encoding="utf-8")
+
+        cleanup = re.search(
+            r"^cleanup\(\) \{\n(?P<body>.*?)^}\n",
+            text,
+            re.MULTILINE | re.DOTALL,
+        )
+        self.assertIsNotNone(cleanup)
+        cleanup_lines = [
+            line.strip()
+            for line in cleanup.group("body").splitlines()
+            if line.strip()
+        ]
+        self.assertIn("end_smoke_group", cleanup_lines)
+        self.assertLess(
+            cleanup_lines.index("end_smoke_group"),
+            cleanup_lines.index('rm -rf "${SMOKE_TMPDIR}"'),
+        )
+
+        function_for_line: dict[int, str] = {}
+        for function in re.finditer(
+            r"^(?P<name>[A-Za-z_][A-Za-z0-9_]*)\(\) \{\n(?P<body>.*?)^}\n",
+            text,
+            re.MULTILINE | re.DOTALL,
+        ):
+            name = function.group("name")
+            start_line = text.count("\n", 0, function.start("body")) + 1
+            body_lines = function.group("body").splitlines()
+            for offset, _line in enumerate(body_lines):
+                function_for_line[start_line + offset] = name
+
+        marker_emitters = []
+        for line_number, line in enumerate(text.splitlines(), 1):
+            stripped = line.strip()
+            if stripped.startswith("#"):
+                continue
+            if "::group::" in stripped or "::endgroup::" in stripped:
+                marker_emitters.append(
+                    (line_number, function_for_line.get(line_number), stripped)
+                )
+
+        marker_functions = {function for _line, function, _text in marker_emitters}
+        self.assertEqual(marker_functions, {"begin_smoke_group", "end_smoke_group"})
+
     def test_recordings_match_shipped_transcript_requests(self) -> None:
         transcripts = sorted(TRANSCRIPTS_DIR.glob("*.llmos"))
         recordings = sorted(RECORDINGS_DIR.glob("*.txt"))
