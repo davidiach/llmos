@@ -447,9 +447,12 @@ jobs:
                       if exc.code != 2:
                           raise SystemExit(f"unexpected exit code: {exc.code}")
                   else:
-                      raise SystemExit("AI mode without ANTHROPIC_API_KEY should exit")
-              if "ANTHROPIC_API_KEY" not in stderr.getvalue():
-                  raise SystemExit(f"unexpected stderr: {stderr.getvalue()!r}")
+                      raise SystemExit("AI mode with missing image should exit")
+              err = stderr.getvalue()
+              if "image file not found" not in err:
+                  raise SystemExit(f"unexpected stderr: {err!r}")
+              if "ANTHROPIC_API_KEY" in err:
+                  raise SystemExit(f"API key preflight ran before image preflight: {err!r}")
           finally:
               sys.argv = old_argv
               bridge.LlmosSession = old_session

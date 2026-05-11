@@ -531,9 +531,9 @@ def main() -> int:
         preflight_ai_limit(args.limit)
         preflight_ai_task(args.task)
     script_lines = load_script_lines(args.file) if args.mode == "script" else None
-    ai_client = make_anthropic_client() if args.mode == "ai" else None
     preflight_image_path(args.image)
     preflight_qemu(args.qemu)
+    ai_client = make_anthropic_client() if args.mode == "ai" else None
     try:
         session = LlmosSession(image=args.image, qemu=args.qemu, qemu_args=args.qemu_arg)
     except (EOFError, OSError, RuntimeError, TimeoutError) as e:
