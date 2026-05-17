@@ -1277,10 +1277,7 @@ jobs:
 
       - name: Generate image checksums
         if: ${{ (success() || failure()) && hashFiles('build/llmos.img') != '' }}
-        run: |
-          cd build
-          sha256sum llmos.img > SHA256SUMS
-          sha256sum -c SHA256SUMS
+        run: make image-checksums
 
       - name: Upload image
         if: ${{ success() || failure() }}
