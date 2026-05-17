@@ -83,7 +83,7 @@ The full wire format and primitive-by-primitive behavior live in
 
 - `nasm`
 - `qemu-system-i386`
-- `make`, `dd`, `sed`, `timeout`
+- `make`, `dd`, `sed`, `timeout`, `sha256sum`
 - `python3` for the bridge
 - `pip install anthropic` only if you want to use the bundled AI bridge
 
@@ -95,6 +95,7 @@ make test-bridge   # run bridge unit tests
 make smoke         # replay shipped transcripts through QEMU
 make check         # build + bridge tests + transcript smoke
 make ci-check      # build + bridge tests + extended protocol smoke
+make image-checksums # write and verify build/SHA256SUMS
 make run           # run in QEMU, COM1 on stdio, VGA suppressed
 make run-gui       # run in QEMU with the VGA window visible
 make debug         # paused at start, gdb stub on :1234
