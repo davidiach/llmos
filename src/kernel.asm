@@ -212,8 +212,23 @@ flat_gdt_desc:
 h_help:
     call    require_no_args
     jc      .usage
-    mov     si, help_response
-    call    respond
+    mov     si, resp_help_prefix
+    call    serial_puts_only
+    mov     bx, cmd_table
+.emit:
+    mov     si, [bx]
+    test    si, si
+    jz      .done
+    cmp     bx, cmd_table
+    je      .name
+    mov     al, ','
+    call    serial_putc
+.name:
+    call    serial_puts_only
+    add     bx, 4
+    jmp     .emit
+.done:
+    call    respond_end
     ret
 .usage:
     mov     si, err_no_args
@@ -2563,8 +2578,6 @@ parse_bdf:
 ; respond: write a fixed string at DS:SI to both serial and VGA, then CRLF.
 respond:
     call    serial_puts_only
-    call    respond_end
-    ret
 
 ; respond_end: terminate a partially-written response line. Response bytes are
 ; mirrored inline by serial_put* helpers, so emit the serial CRLF raw and then
@@ -2889,22 +2902,9 @@ serial_getc:
     ret
 
 ; serial_puts: write NUL-terminated DS:SI over serial (with VGA mirror).
-serial_puts:
-    pusha
-.loop:
-    lodsb
-    test    al, al
-    jz      .done
-    call    serial_putc
-    jmp     .loop
-.done:
-    popa
-    ret
-
-; serial_puts_only: same as serial_puts but does not mirror to VGA (used by
-; handlers that emit key=value chunks, so that VGA mirrors the whole final
-; line atomically via a helper — kept for symmetry, currently same as above).
+; serial_puts_only is an alias retained for response-emitting call sites.
 serial_puts_only:
+serial_puts:
     pusha
 .loop:
     lodsb
@@ -3419,9 +3419,10 @@ err_pci_mem_addr_range:
 err_pci_mem_typed_range:
     db 'err code=out_of_range detail="bar, offset, or alignment out of range"', 0
 
-; Help response (full line).
-help_response:
-    db 'ok primitives=help,describe,cpu.vendor,cpu.features,mem.query,mem.read,mem.read8,mem.read16,mem.read32,mem.read.seg,mem.read.seg8,mem.read.seg16,mem.read.seg32,rtc.now,ticks.since_boot,io.in,pci.scan,pci.config.read,pci.config.read8,pci.config.read16,pci.config.read32,pci.cap.list,pci.cap.read,pci.bars,pci.bar.read,pci.mem.read,pci.mem.read8,pci.mem.read16,pci.mem.read32', 0
+; Help response prefix. h_help emits names from cmd_table to avoid duplicating
+; the primitive list in data.
+resp_help_prefix:
+    db 'ok primitives=', 0
 
 ; Schema table: (name_ptr, schema_line_ptr). NULL-terminated.
 schema_table:

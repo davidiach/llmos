@@ -124,14 +124,14 @@ def extract_kernel_protocol_metadata() -> KernelProtocolMetadata:
     if banner_metadata is None:
         raise AssertionError(f"malformed ready_msg: {ready_banner}")
 
-    help_response = re.search(
-        r"^help_response:\n\s+db 'ok primitives=([^']+)', 0",
+    help_prefix = re.search(
+        r"^resp_help_prefix:\n\s+db 'ok primitives=', 0",
         text,
         re.MULTILINE,
     )
-    if help_response is None:
-        raise AssertionError("missing help_response")
-    help_primitives = help_response.group(1).split(",")
+    if help_prefix is None:
+        raise AssertionError("missing resp_help_prefix")
+    help_primitives = commands
 
     io_allowlist = re.search(
         r"^io_allowlist:\n(?P<body>.*?)^\s*dw\s+0xFFFF\b",
