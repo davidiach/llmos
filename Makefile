@@ -22,7 +22,7 @@ MAX_KERNEL_BYTES := $(shell expr $(KERNEL_SECTORS) \* 512)
 # QEMU window if you remove -display none).
 QEMU_ARGS  := -drive format=raw,if=floppy,file=$(IMG) -serial stdio -display none
 
-.PHONY: all run run-gui debug clean check ci-check image-checksums smoke ci-smoke test-bridge
+.PHONY: all run run-gui debug clean check ci-check image-checksums size size-report smoke ci-smoke test-bridge
 
 all: $(IMG)
 
@@ -32,6 +32,16 @@ ci-check: all test-bridge ci-smoke
 
 image-checksums: $(CHECKSUMS)
 	@cd $(BUILD_DIR) && sha256sum -c $(notdir $(CHECKSUMS))
+
+size: size-report
+
+size-report: $(BOOT_BIN) $(KERNEL_BIN)
+	@boot_sz=$$(wc -c < $(BOOT_BIN)); \
+	  kernel_sz=$$(wc -c < $(KERNEL_BIN)); \
+	  free=$$(expr $(MAX_KERNEL_BYTES) - $$kernel_sz); \
+	  printf "boot:   %s B / 512 B\n" "$$boot_sz"; \
+	  printf "kernel: %s B / %s B budget (%s B free)\n" \
+	    "$$kernel_sz" "$(MAX_KERNEL_BYTES)" "$$free"
 
 $(BUILD_DIR):
 	@mkdir -p $(BUILD_DIR)
