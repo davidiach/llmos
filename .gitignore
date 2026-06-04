@@ -5,3 +5,9 @@ build/
 __pycache__/
 *.pyc
 .venv/
+
+# Local task scratch / generated images
+/PLAN.md
+/EXPERIMENTS.md
+/EXPERIMENT_NOTES.md
+/ChatGPT Image*.png
