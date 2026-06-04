@@ -92,6 +92,7 @@ The full wire format and primitive-by-primitive behavior live in
 ```sh
 make               # build/llmos.img
 make size-report   # print boot/kernel byte usage and free kernel budget
+make size-map      # print largest kernel labels from the NASM listing
 make test-bridge   # run bridge unit tests
 make smoke         # replay shipped transcripts through QEMU
 make check         # build + bridge tests + transcript smoke

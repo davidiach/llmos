@@ -10,6 +10,7 @@ BUILD_DIR  := build
 
 BOOT_BIN   := $(BUILD_DIR)/boot.bin
 KERNEL_BIN := $(BUILD_DIR)/kernel.bin
+KERNEL_LST := $(BUILD_DIR)/kernel.lst
 IMG        := $(BUILD_DIR)/llmos.img
 CHECKSUMS  := $(BUILD_DIR)/SHA256SUMS
 SECTOR_CHECK := $(BUILD_DIR)/kernel-sectors.ok
@@ -22,7 +23,7 @@ MAX_KERNEL_BYTES := $(shell expr $(KERNEL_SECTORS) \* 512)
 # QEMU window if you remove -display none).
 QEMU_ARGS  := -drive format=raw,if=floppy,file=$(IMG) -serial stdio -display none
 
-.PHONY: all run run-gui debug clean check ci-check image-checksums size size-report smoke ci-smoke test-bridge
+.PHONY: all run run-gui debug clean check ci-check image-checksums size size-report size-map smoke ci-smoke test-bridge
 
 all: $(IMG)
 
@@ -42,6 +43,12 @@ size-report: $(BOOT_BIN) $(KERNEL_BIN)
 	  printf "boot:   %s B / 512 B\n" "$$boot_sz"; \
 	  printf "kernel: %s B / %s B budget (%s B free)\n" \
 	    "$$kernel_sz" "$(MAX_KERNEL_BYTES)" "$$free"
+
+size-map: $(KERNEL_BIN)
+	python3 tools/kernel_size_map.py \
+	  --listing $(KERNEL_LST) \
+	  --binary $(KERNEL_BIN) \
+	  --budget $(MAX_KERNEL_BYTES)
 
 $(BUILD_DIR):
 	@mkdir -p $(BUILD_DIR)
@@ -63,7 +70,7 @@ $(BOOT_BIN): $(SRC_DIR)/boot.asm $(SECTOR_CHECK) | $(BUILD_DIR)
 	  fi
 
 $(KERNEL_BIN): $(SRC_DIR)/kernel.asm Makefile | $(BUILD_DIR)
-	$(AS) -f bin $< -o $@
+	$(AS) -f bin -l $(KERNEL_LST) $< -o $@
 	@sz=$$(wc -c < $@); \
 	  max=$(MAX_KERNEL_BYTES); \
 	  if [ $$sz -gt $$max ]; then \

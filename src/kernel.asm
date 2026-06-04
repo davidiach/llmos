@@ -339,7 +339,7 @@ h_cpu_vendor:
     mov     al, [cpu_sig]
     and     al, 0x0F
     xor     ah, ah
-    call    serial_put_dec
+    call    serial_put_udec
     call    respond_end
     ret
 .usage:
@@ -1806,10 +1806,10 @@ h_pci_bars:
     shl     al, 2
     add     al, 0x10
     call    pci_config_read_dword
-    mov     [pci_bar_hi], eax
+    push    eax
     mov     si, str_m64
     call    serial_puts_only
-    mov     eax, [pci_bar_hi]
+    pop     eax
     call    serial_put_hex_dword
     mov     eax, [pci_bar_lo]
     and     eax, 0xFFFFFFF0
@@ -3035,12 +3035,6 @@ serial_put_udec:
     popa
     ret
 
-; serial_put_dec: AL = byte, emit as unsigned decimal. (Wrapper.)
-serial_put_dec:
-    xor     ah, ah
-    call    serial_put_udec
-    ret
-
 ; serial_put_udec32: EAX = unsigned 32-bit, emit as decimal.
 serial_put_udec32:
     pushad
@@ -3232,10 +3226,7 @@ parse_dec_word:
 ; =============================================================================
 
 vga_banner:
-    db '+---------------------------------+', 13, 10
-    db '|  llmos v0.1  (proto=1)          |', 13, 10
-    db '|  COM1 115200 8N1 - LLM driven   |', 13, 10
-    db '+---------------------------------+', 13, 10, 13, 10, 0
+    db 'llmos v0.1 proto=1 COM1 115200 8N1', 13, 10, 13, 10, 0
 
 ready_msg:      db '# llmos v0.1 proto=1 primitives=29', 13, 10, 0
 
@@ -3608,7 +3599,6 @@ pci_cap_malformed: db 0
 pci_nbars:      db 0
 pci_pref:       db 0
 pci_bar_lo:     dd 0
-pci_bar_hi:     dd 0
 pci_bar_idx:    db 0
 pci_bar_offset: dw 0
 pci_bar_len:    dw 0
