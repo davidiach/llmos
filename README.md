@@ -94,9 +94,10 @@ make               # build/llmos.img
 make size-report   # print boot/kernel byte usage and free kernel budget
 make size-map      # print largest kernel labels from the NASM listing
 make test-bridge   # run bridge unit tests
+make eval-scripted # run deterministic task-level eval traces
 make smoke         # replay shipped transcripts through QEMU
 make check         # build + bridge tests + transcript smoke
-make ci-check      # build + bridge tests + extended protocol smoke
+make ci-check      # build + tests + extended protocol smoke + evals
 make image-checksums # write and verify build/SHA256SUMS
 make run           # run in QEMU, COM1 on stdio, VGA suppressed
 make run-gui       # run in QEMU with the VGA window visible

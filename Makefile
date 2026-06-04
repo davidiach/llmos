@@ -23,13 +23,13 @@ MAX_KERNEL_BYTES := $(shell expr $(KERNEL_SECTORS) \* 512)
 # QEMU window if you remove -display none).
 QEMU_ARGS  := -drive format=raw,if=floppy,file=$(IMG) -serial stdio -display none
 
-.PHONY: all run run-gui debug clean check ci-check image-checksums size size-report size-map smoke ci-smoke test-bridge
+.PHONY: all run run-gui debug clean check ci-check image-checksums size size-report size-map smoke ci-smoke test-bridge eval-scripted eval-ai
 
 all: $(IMG)
 
 check: all test-bridge smoke
 
-ci-check: all test-bridge ci-smoke
+ci-check: all test-bridge ci-smoke eval-scripted
 
 image-checksums: $(CHECKSUMS)
 	@cd $(BUILD_DIR) && sha256sum -c $(notdir $(CHECKSUMS))
@@ -103,7 +103,13 @@ debug: $(IMG)
 	$(QEMU) $(QEMU_ARGS) -s -S
 
 test-bridge:
-	python3 -m unittest demo.test_bridge
+	python3 -m unittest discover demo
+
+eval-scripted: $(IMG)
+	python3 demo/eval.py --image $(IMG) scripted
+
+eval-ai: $(IMG)
+	python3 demo/eval.py --image $(IMG) ai
 
 smoke: $(IMG)
 	@set -e; \
